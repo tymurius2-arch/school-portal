@@ -63,6 +63,12 @@ code{font-family:var(--f-mono); background:var(--surface2); padding:1px 6px; bor
 .brand{display:flex; align-items:center; gap:10px; min-width:0}
 .brand b{font-family:var(--f-display); font-weight:800; display:block}
 .brand small{display:block; font-size:.8rem}
+.logo-big{width:180px; height:180px; border-radius:28px; box-shadow:0 10px 40px rgba(91,75,214,.45)}
+.logo-wide{height:39px; width:auto; border-radius:8px; flex:none}
+.under{text-align:center; display:grid; gap:8px; justify-items:center; max-width:480px}
+.stamp{display:inline-block; font-family:var(--f-display); font-size:.78rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+  color:var(--violet); border:2px solid var(--violet); border-radius:8px; padding:3px 10px; transform:rotate(-3deg)}
+.stamp.sm{font-size:.6rem; padding:1px 6px; vertical-align:2px; margin-left:4px; transform:rotate(-4deg)}
 .planet{width:72px; height:72px; border-radius:50%; background:var(--violet); position:relative; box-shadow:inset -10px -8px 0 rgba(0,0,0,.18)}
 .planet::after{content:""; position:absolute; inset:28px -14px; border:3px solid var(--accent); border-radius:50%; transform:rotate(-20deg)}
 .planet.sm{width:34px; height:34px; flex:none; box-shadow:inset -5px -4px 0 rgba(0,0,0,.18)}
