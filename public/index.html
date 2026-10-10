@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Портал класу</title>
+<title>Підпільний портал учнів</title>
+<link rel="icon" href="logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap">
@@ -28,14 +29,16 @@
 
 <!-- Вхід і реєстрація -->
 <main class="screen center" id="s-auth" hidden>
-  <div class="brand">
-    <div class="planet sm" aria-hidden="true"></div>
-    <div><b class="school-name">Наша школа</b><small class="muted">Портал класу</small></div>
+  <img class="logo-big" src="logo.png" alt="Totosha High-Minds School" width="180" height="180">
+  <div class="under">
+    <span class="stamp">🤫 Тільки для учнів</span>
+    <h1>Підпільний портал учнів</h1>
+    <p class="muted">Неофіційний сайт. Зробили учні для учнів — без учителів і батьків.<br>Вхід лише за схваленою заявкою.</p>
   </div>
   <div class="card narrow stack">
     <div class="seg" role="tablist">
       <button type="button" role="tab" id="t-login" aria-selected="true">Вхід</button>
-      <button type="button" role="tab" id="t-register" aria-selected="false">Заявка на вступ</button>
+      <button type="button" role="tab" id="t-register" aria-selected="false">Хочу до своїх</button>
     </div>
 
     <form id="f-login" class="stack" novalidate>
@@ -47,7 +50,7 @@
     </form>
 
     <form id="f-register" class="stack" novalidate hidden>
-      <p class="muted small">Заповни заявку. Адміністратор перевірить її, і після схвалення ти потрапиш у портал свого класу.</p>
+      <p class="muted small">Заповни заявку. Адмін перевірить, що ти справді учень нашої школи, і впустить тебе в портал твого класу.</p>
       <label for="r-email">Електронна пошта<input id="r-email" type="email" autocomplete="email" required></label>
       <label for="r-pass">Пароль (мінімум 6 символів)<input id="r-pass" type="password" autocomplete="new-password" minlength="6" required></label>
       <div class="profile-fields" data-prefix="r"></div>
@@ -75,8 +78,8 @@
 <main class="screen center" id="s-wait" hidden>
   <div class="card narrow stack wait">
     <div class="orbit" aria-hidden="true"><span></span></div>
-    <h1>Очікуйте схвалення</h1>
-    <p>Заявку отримано. Щойно адміністратор її схвалить, портал відкриється сам — сторінку оновлювати не треба.</p>
+    <h1>Очікуй схвалення</h1>
+    <p>Заявку отримано. Адмін перевіряє, що ти свій. Щойно тебе впустять, портал відкриється сам — сторінку оновлювати не треба.</p>
     <dl class="details" id="wait-details"></dl>
     <div class="claim stack" data-claim hidden>
       <p class="small">На порталі ще немає адміністратора. Якщо ти його створюєш — натисни кнопку. Це можна зробити лише один раз.</p>
@@ -94,8 +97,8 @@
   <header class="top">
     <div class="top-in">
       <div class="brand">
-        <div class="planet sm" aria-hidden="true"></div>
-        <div><b class="school-name">Наша школа</b><small class="muted" id="who"></small></div>
+        <img class="logo-wide" src="logo-wide.png" alt="Totosha" width="108" height="39">
+        <div><b>Підпільний портал <span class="stamp sm">учні only</span></b><small class="muted" id="who"></small></div>
       </div>
       <span class="status" id="lesson" aria-live="polite"></span>
       <button class="icon-btn" type="button" id="b-theme" aria-label="Змінити тему">☀️</button>
@@ -123,7 +126,7 @@
           <button class="btn" type="submit">Надіслати</button>
         </form>
       </div>
-      <p class="muted small">Будь ввічливим. Адміністратор може видаляти повідомлення.</p>
+      <p class="muted small">Тут лише свої. Будь ввічливим — адмін може видаляти повідомлення.</p>
     </section>
 
     <!-- Оголошення -->
@@ -161,7 +164,7 @@
 <div class="toast" id="toast" role="status"></div>
 
 <template id="tpl-profile">
-  <fieldset class="roles">
+  <fieldset class="roles" hidden>
     <legend class="eyebrow">Хто ти?</legend>
     <label class="role"><input type="radio" name="role" value="student" checked><span><b>Учень</b><small>Навчаюсь у школі</small></span></label>
     <label class="role"><input type="radio" name="role" value="teacher"><span><b>Вчитель</b><small>Викладаю предмет</small></span></label>

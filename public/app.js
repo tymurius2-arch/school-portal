@@ -46,14 +46,15 @@ function confirmButton(label, cls, action) {
 const root = document.documentElement;
 const isDark = () => root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
 const syncTheme = () => { $("#b-theme").textContent = isDark() ? "☀️" : "🌙"; };
-if (store.get("theme", null)) root.dataset.theme = store.get("theme");
+// Підпільний портал за замовчуванням темний.
+root.dataset.theme = store.get("theme", "dark");
 syncTheme();
 $("#b-theme").addEventListener("click", () => { root.dataset.theme = isDark() ? "light" : "dark"; store.set("theme", root.dataset.theme); syncTheme(); });
 
 /* ---------- Екрани ---------- */
 const show = id => $$(".screen").forEach(s => s.hidden = s.id !== "s-" + id);
 $$(".school-name").forEach(e => e.textContent = SCHOOL.name);
-document.title = `Портал класу · ${SCHOOL.name}`;
+document.title = "Підпільний портал учнів";
 
 /* ---------- Firebase ---------- */
 const useEmu = new URLSearchParams(location.search).has("emulator") && ["localhost", "127.0.0.1"].includes(location.hostname);
