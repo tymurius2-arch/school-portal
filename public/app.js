@@ -5,9 +5,10 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   getFirestore, connectFirestoreEmulator, doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc,
-  collection, query, orderBy, limit, onSnapshot, serverTimestamp
+  collection, query, where, orderBy, limit, onSnapshot, serverTimestamp, arrayUnion, arrayRemove
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { firebaseConfig, SCHOOL } from "./config.js";
+import { HINTS } from "./hints.js";
 
 /* ---------- Дрібниці ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -164,7 +165,10 @@ function start() {
   /* ----- Стан сесії ----- */
   let me = null, profile, isAdmin = false, editing = false, inPortal = false;
   let sessionSubs = [], portalSubs = [];
-  const stopPortal = () => { portalSubs.forEach(u => u()); portalSubs = []; chatUnsub && chatUnsub(); chatUnsub = null; inPortal = false; };
+  const stopPortal = () => {
+    portalSubs.forEach(u => u()); portalSubs = []; chatUnsub && chatUnsub(); chatUnsub = null; inPortal = false;
+    current = null; groups = []; dir = {}; dirReady = false; apps = []; appsReady = false;
+  };
   const stopAll = () => { sessionSubs.forEach(u => u()); sessionSubs = []; stopPortal(); };
 
   onAuthStateChanged(auth, async user => {
@@ -176,17 +180,28 @@ function start() {
     sessionSubs.push(onSnapshot(doc(db, "users", user.uid),
       s => { profile = s.exists() ? s.data({ serverTimestamps: "estimate" }) : null; route(); },
       e => { console.error(e); toast("Немає зв'язку з сервером. Онови сторінку."); }));
+    // Призначення чи зняття модератора застосовується одразу.
+    sessionSubs.push(onSnapshot(doc(db, "mods", user.uid), s => {
+      const v = !isAdmin && s.exists();
+      if (v === isMod) return;
+      isMod = v;
+      if (inPortal) { stopPortal(); route(); toast(v ? "Тебе призначено молодшим модератором" : "Тебе знято з модераторів"); }
+    }, () => {}));
   });
 
   /* ----- Адміністратор ----- */
-  let ownerFree = false;
+  // isOwner — головний адмін (повна влада), isAdmin — він або доданий у консолі,
+  // isMod — молодший модератор (видаляє повідомлення, бачить модерацію).
+  let ownerFree = false, isOwner = false, isMod = false, ownerUid = null;
   async function checkAdmin(user) {
-    isAdmin = false; ownerFree = false;
+    isAdmin = false; isOwner = false; isMod = false; ownerFree = false; ownerUid = null;
     try {
       const owner = await getDoc(doc(db, "meta", "owner"));
       ownerFree = !owner.exists();
-      isAdmin = owner.exists() && owner.data().uid === user.uid;
-      if (!isAdmin) isAdmin = (await getDoc(doc(db, "admins", user.uid))).exists();
+      ownerUid = owner.exists() ? owner.data().uid : null;
+      isOwner = ownerUid === user.uid;
+      isAdmin = isOwner || (await getDoc(doc(db, "admins", user.uid))).exists();
+      if (!isAdmin) isMod = (await getDoc(doc(db, "mods", user.uid))).exists();
     } catch (e) { console.error(e); }
     $$("[data-claim]").forEach(b => b.hidden = !ownerFree);
   }
@@ -245,14 +260,17 @@ function start() {
 
   /* ----- Портал ----- */
   const myClass = () => profile.role === "parent" ? profile.childClass : profile.role === "student" ? profile.cls : null;
-  const canPickClass = () => isAdmin || profile.role === "teacher";
+  // Читати будь-який клас можуть адміністратор, модератори й учителі; писати в чужий клас модератор не може.
+  const canPickClass = () => isAdmin || isMod || profile.role === "teacher";
+  const canWriteClass = c => isAdmin || profile.role === "teacher" || c === myClass();
+  const roleLabel = () => isOwner ? "головний адмін" : isAdmin ? "адміністратор" : isMod ? "мол. модератор" : ROLE[profile.role];
   let lastClass = null;
 
   function enterPortal() {
     const cls = myClass();
-    $("#who").textContent = [profile.name, isAdmin ? "адміністратор" : ROLE[profile.role], cls ? `${cls} клас` : ""].filter(Boolean).join(" · ");
+    $("#who").textContent = [profile.name, roleLabel(), cls ? `${cls} клас` : ""].filter(Boolean).join(" · ");
     if (inPortal) {
-      if (cls !== lastClass) { lastClass = cls; setupChat(); setupNewsForm(); renderNews(); setupSchedule(); }
+      if (cls !== lastClass) { lastClass = cls; hintCls = cls || hintCls; setupChat(); setupNewsForm(); renderNews(); setupSchedule(); renderHints(); }
       return;
     }
     inPortal = true; lastClass = cls;
@@ -260,16 +278,16 @@ function start() {
     // Заявка самого адміністратора не має висіти серед нових.
     if (isAdmin && profile.status !== "approved") updateDoc(doc(db, "users", me.uid), { status: "approved", reviewedAt: serverTimestamp() }).catch(console.error);
     $(".tab[data-tab=admin]").hidden = !isAdmin;
-    $(".tab[data-tab=mod]").hidden = !isAdmin;
+    $(".tab[data-tab=mod]").hidden = !(isAdmin || isMod);
     startPresence();
-    setupChat(); setupNews(); setupSchedule();
-    if (isAdmin) { setupAdmin(); setupModeration(); }
-    const saved = store.get("tab", "chat");
-    openTab((saved === "admin" || saved === "mod") && !isAdmin ? "chat" : saved);
+    setupDirectory(); setupChat(); setupGroups(); setupNews(); setupSchedule(); setupHints();
+    if (isAdmin) setupAdmin();
+    if (isAdmin || isMod) setupModeration();
+    openTab(store.get("tab", "chat"));
   }
 
   function openTab(id) {
-    if (!$("#p-" + id)) id = "chat";
+    if (!$("#p-" + id) || (id === "admin" && !isAdmin) || (id === "mod" && !isAdmin && !isMod)) id = "chat";
     $$(".tab").forEach(t => t.setAttribute("aria-selected", String(t.dataset.tab === id)));
     $$(".panel").forEach(p => p.hidden = p.id !== "p-" + id);
     store.set("tab", id);
@@ -277,33 +295,127 @@ function start() {
   }
   $$(".tab").forEach(t => t.addEventListener("click", () => openTab(t.dataset.tab)));
 
-  /* ----- Чат класу ----- */
-  let chatUnsub = null, chatCls = null;
+  /* ----- Список учасників (для запрошень і модерації) ----- */
+  let dir = {}, dirReady = false;
+  function setupDirectory() {
+    portalSubs.push(onSnapshot(collection(db, "directory"), s => {
+      dir = {}; s.docs.forEach(d => { dir[d.id] = d.data(); }); dirReady = true;
+      if (!$("#f-group").hidden) renderPicker();
+      const g = current && current.kind === "group" && groups.find(x => x.id === current.id);
+      if (g) renderGroupBar(g);
+      renderGroupRequests(); renderModeration(); syncDirectory();
+    }, e => console.error(e)));
+  }
+  // Адміністратор підтримує список в актуальному стані: схвалені — є, інші — ні.
+  function syncDirectory() {
+    if (!isAdmin || !dirReady || !appsReady) return;
+    apps.forEach(d => {
+      const p = d.data();
+      if (p.status === "approved") {
+        const want = { name: p.name, role: p.role, cls: classOf(p) || null }, have = dir[d.id];
+        if (!have || have.name !== want.name || have.role !== want.role || (have.cls || null) !== want.cls) setDoc(doc(db, "directory", d.id), want).catch(console.error);
+      } else if (dir[d.id]) deleteDoc(doc(db, "directory", d.id)).catch(console.error);
+    });
+    Object.keys(dir).forEach(id => { if (!apps.some(d => d.id === id)) deleteDoc(doc(db, "directory", id)).catch(console.error); });
+  }
+  const who = ids => ids.map(u => u === me.uid ? "ти" : (dir[u] ? dir[u].name + (dir[u].cls ? ` (${dir[u].cls})` : "") : "…")).join(", ");
+
+  /* ----- Чати: чат класу й окремі чати ----- */
+  let chatUnsub = null, current = null, groups = [];
   function setupChat() {
     const sel = $("#chat-class");
     sel.innerHTML = classOptions();
-    $("#chat-class-wrap").hidden = !canPickClass();
     const startCls = canPickClass() ? (Number(store.get("chatCls", 0)) || myClass() || 1) : myClass();
     sel.value = String(startCls);
-    openChat(startCls);
+    if (!current || current.kind === "class") openClassChat(startCls);
+    else renderSwitch();
   }
-  $("#chat-class").addEventListener("change", e => { store.set("chatCls", Number(e.target.value)); openChat(Number(e.target.value)); });
+  $("#chat-class").addEventListener("change", e => { store.set("chatCls", Number(e.target.value)); openClassChat(Number(e.target.value)); });
+  const classChatCls = () => canPickClass() ? Number($("#chat-class").value) : myClass();
 
-  function openChat(cls) {
+  function renderSwitch() {
+    const box = $("#chat-switch"); box.replaceChildren();
+    const mk = (text, pressed, onClick, cls = "") => {
+      const b = el("button", "chip" + cls, text); b.type = "button";
+      b.setAttribute("aria-pressed", String(pressed)); b.addEventListener("click", onClick); box.append(b); return b;
+    };
+    const c = classChatCls();
+    mk(c ? `Чат ${c} класу` : "Чат класу", !!current && current.kind === "class", () => openClassChat(classChatCls()));
+    groups.filter(g => g.members.includes(me.uid)).sort((a, b) => a.name.localeCompare(b.name, "uk")).forEach(g => {
+      if (g.status === "approved") { mk(g.name, !!current && current.kind === "group" && current.id === g.id, () => openGroupChat(g.id)); return; }
+      const b = mk(g.name + (g.status === "pending" ? " · чекає" : " · відхилено"), false,
+        () => toast(g.status === "pending" ? "Чат чекає схвалення адміністратора" : "Адміністратор відхилив цей чат"), " muted");
+      b.append(el("span", "dot"));
+    });
+    mk("+ Новий чат", false, () => openGroupForm("create"), " add");
+  }
+  function setComposer(enabled, note) {
+    $("#chat-text").disabled = !enabled;
+    $("#f-chat button[type=submit]").disabled = !enabled;
+    $("#f-chat").classList.toggle("off", !enabled);
+    $("#chat-text").placeholder = enabled ? "Напиши повідомлення…" : note;
+  }
+  function listen(q, kind) {
     chatUnsub && chatUnsub();
-    chatCls = cls;
-    $("#chat-title").textContent = `Чат ${cls} класу`;
     const box = $("#messages"); box.replaceChildren(emptyEl("Завантаження…"));
-    const q = query(collection(db, "classes", String(cls), "messages"), orderBy("createdAt", "desc"), limit(200));
     chatUnsub = onSnapshot(q,
-      s => renderMessages(s.docs.slice().reverse()),
+      s => renderMessages(s.docs.slice().reverse(), kind),
       e => { console.error(e); box.replaceChildren(emptyEl("Немає доступу до цього чату.")); });
   }
+  function showChatBox() { $("#f-group").hidden = true; $("#chat-box").hidden = false; }
+  function openClassChat(cls) {
+    current = { kind: "class", cls };
+    showChatBox();
+    $("#chat-title").textContent = `Чат ${cls} класу`;
+    $("#chat-class-wrap").hidden = !canPickClass();
+    $("#group-bar").hidden = true;
+    setComposer(canWriteClass(cls), "Тут можна лише читати — писати можна в чат свого класу");
+    listen(query(collection(db, "classes", String(cls), "messages"), orderBy("createdAt", "desc"), limit(200)), "class");
+    renderSwitch();
+  }
+  function openGroupChat(id) {
+    const g = groups.find(x => x.id === id); if (!g) return;
+    current = { kind: "group", id };
+    showChatBox();
+    $("#chat-title").textContent = g.name;
+    $("#chat-class-wrap").hidden = true;
+    renderGroupBar(g);
+    setComposer(true);
+    listen(query(collection(db, "groups", id, "messages"), orderBy("createdAt", "desc"), limit(200)), "group");
+    renderSwitch();
+  }
+  function renderGroupBar(g) {
+    $("#group-bar").hidden = !$("#f-group").hidden;
+    $("#group-members").textContent = `Учасники (${g.members.length}): ${who(g.members)}` + ((g.invited || []).length ? ` · чекають схвалення: ${g.invited.length}` : "");
+    $("#b-invite").hidden = g.owner !== me.uid;
+  }
+  $("#b-leave").addEventListener("click", async e => {
+    const b = e.currentTarget;
+    if (b.dataset.armed !== "1") { b.dataset.armed = "1"; b.textContent = "Точно вийти?"; setTimeout(() => { b.dataset.armed = ""; b.textContent = "Вийти з чату"; }, 3000); return; }
+    b.dataset.armed = ""; b.textContent = "Вийти з чату";
+    const g = current && groups.find(x => x.id === current.id); if (!g) return;
+    try { await updateDoc(g.ref, { members: arrayRemove(me.uid) }); toast("Ти вийшов із чату"); openClassChat(classChatCls()); }
+    catch (ex) { console.error(ex); toast("Не вдалося вийти з чату"); }
+  });
+
+  function setupGroups() {
+    const q = isAdmin ? query(collection(db, "groups"), limit(500)) : query(collection(db, "groups"), where("members", "array-contains", me.uid));
+    portalSubs.push(onSnapshot(q, s => {
+      groups = s.docs.map(d => ({ id: d.id, ref: d.ref, ...d.data() }));
+      if (current && current.kind === "group") {
+        const g = groups.find(x => x.id === current.id);
+        if (!g || !g.members.includes(me.uid) || g.status !== "approved") openClassChat(classChatCls());
+        else { $("#chat-title").textContent = g.name; renderGroupBar(g); }
+      }
+      renderSwitch(); renderGroupRequests();
+    }, e => console.error(e)));
+  }
+
   function scrollChat(force) {
     const box = $("#messages");
     if (force || box.scrollHeight - box.scrollTop - box.clientHeight < 120) box.scrollTop = box.scrollHeight;
   }
-  function renderMessages(docs) {
+  function renderMessages(docs, kind) {
     const box = $("#messages");
     const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 120;
     box.replaceChildren();
@@ -318,9 +430,10 @@ function start() {
       const wrap = el("div", "msg" + (mine ? " mine" : ""));
       const meta = el("div", "meta");
       meta.append(el("b", null, mine ? "Ти" : m.name));
+      if (kind === "group" && !mine && dir[m.uid] && dir[m.uid].cls) meta.append(el("span", null, `${dir[m.uid].cls} клас`));
       if (m.role && m.role !== "student") meta.append(el("span", null, ROLE[m.role]));
       meta.append(el("span", null, fmtTime(when)));
-      if (mine || isAdmin) meta.append(confirmButton("видалити", "del", () => deleteDoc(d.ref)));
+      if (mine || isAdmin || (isMod && kind === "class")) meta.append(confirmButton("видалити", "del", () => deleteDoc(d.ref)));
       wrap.append(meta, el("div", "txt", m.text));
       box.append(wrap);
     });
@@ -329,14 +442,101 @@ function start() {
   $("#f-chat").addEventListener("submit", async e => {
     e.preventDefault();
     const input = $("#chat-text"), text = input.value.trim();
-    if (!text || chatCls == null) return;
+    if (!text || !current) return;
+    const col = current.kind === "class" ? collection(db, "classes", String(current.cls), "messages") : collection(db, "groups", current.id, "messages");
     input.value = "";
     try {
-      await addDoc(collection(db, "classes", String(chatCls), "messages"),
-        { uid: me.uid, name: profile.name, role: profile.role, text: text.slice(0, 500), createdAt: serverTimestamp() });
+      await addDoc(col, { uid: me.uid, name: profile.name, role: profile.role, text: text.slice(0, 500), createdAt: serverTimestamp() });
       scrollChat(true);
     } catch (ex) { console.error(ex); input.value = text; toast("Повідомлення не надіслано"); }
   });
+
+  /* ----- Створення чату й запрошення ----- */
+  let gMode = "create", gSel = new Set(), gClass = "all";
+  function openGroupForm(mode) {
+    gMode = mode; gSel = new Set(); gClass = "all";
+    const f = $("#f-group"); formErr(f);
+    f.hidden = false; $("#chat-box").hidden = true; $("#group-bar").hidden = true; $("#chat-class-wrap").hidden = true;
+    const g = mode === "invite" && current && groups.find(x => x.id === current.id);
+    $("#chat-title").textContent = mode === "create" ? "Новий чат" : `Запросити в «${g ? g.name : ""}»`;
+    $("#group-form-title").textContent = mode === "create" ? "Хто буде в чаті?" : "Кого ще запросити?";
+    $("#g-name-wrap").hidden = mode !== "create";
+    $("#g-name").value = ""; $("#g-search").value = "";
+    renderPicker();
+  }
+  function closeGroupForm() {
+    $("#f-group").hidden = true;
+    if (current && current.kind === "group" && groups.some(x => x.id === current.id)) openGroupChat(current.id);
+    else openClassChat(classChatCls());
+  }
+  $("#g-cancel").addEventListener("click", closeGroupForm);
+  $("#b-invite").addEventListener("click", () => openGroupForm("invite"));
+  $("#g-search").addEventListener("input", () => renderPicker());
+  function renderPicker() {
+    const g = gMode === "invite" && current && groups.find(x => x.id === current.id);
+    const skip = new Set([me.uid, ...(g ? [...g.members, ...(g.invited || [])] : [])]);
+    const people = Object.entries(dir).filter(([id]) => !skip.has(id));
+    const classes = [...new Set(people.map(([, p]) => p.cls).filter(Boolean))].sort((a, b) => a - b);
+    $("#g-class-filter").innerHTML = [["all", "Усі класи"], ...classes.map(c => [String(c), `${c} клас`])]
+      .map(([k, t]) => `<button class="chip" type="button" data-f="${k}" aria-pressed="${k === gClass}">${t}</button>`).join("");
+    $$("#g-class-filter .chip").forEach(c => c.addEventListener("click", () => { gClass = c.dataset.f; renderPicker(); }));
+    const q = $("#g-search").value.trim().toLowerCase();
+    const list = people
+      .filter(([, p]) => (gClass === "all" || String(p.cls) === gClass) && (!q || p.name.toLowerCase().includes(q)))
+      .sort((a, b) => (a[1].cls || 99) - (b[1].cls || 99) || a[1].name.localeCompare(b[1].name, "uk"));
+    const box = $("#g-pick"); box.replaceChildren();
+    if (!list.length) box.append(emptyEl(people.length ? "Нікого не знайдено." : "Поки немає кого запросити."));
+    list.forEach(([id, p]) => {
+      const lab = el("label"), cb = el("input");
+      cb.type = "checkbox"; cb.checked = gSel.has(id); cb.value = id;
+      cb.addEventListener("change", () => { if (cb.checked) gSel.add(id); else gSel.delete(id); $("#g-count").textContent = `Обрано: ${gSel.size}`; });
+      lab.append(cb, el("span", null, p.name), el("small", null, p.cls ? `${p.cls} клас` : (ROLE[p.role] || "")));
+      box.append(lab);
+    });
+    $("#g-count").textContent = `Обрано: ${gSel.size}`;
+  }
+  $("#f-group").addEventListener("submit", async e => {
+    e.preventDefault(); const f = e.target; formErr(f);
+    const name = $("#g-name").value.trim();
+    if (gMode === "create" && name.length < 2) { formErr(f, "Придумай назву чату."); $("#g-name").focus(); return; }
+    if (!gSel.size) { formErr(f, "Обери хоча б одну людину."); return; }
+    if (gSel.size > 40) { formErr(f, "Не більше 40 людей за раз."); return; }
+    const btn = $("#g-submit"); btn.disabled = true;
+    try {
+      if (gMode === "create") {
+        await addDoc(collection(db, "groups"), { name, owner: me.uid, members: [me.uid], invited: [...gSel], status: "pending", createdAt: serverTimestamp() });
+        toast("Чат надіслано адміну на схвалення");
+      } else {
+        const g = groups.find(x => x.id === current.id);
+        await updateDoc(g.ref, { invited: [...new Set([...(g.invited || []), ...gSel])].slice(0, 40) });
+        toast("Запрошення надіслано адміну на схвалення");
+      }
+      closeGroupForm();
+    } catch (ex) { console.error(ex); formErr(f, "Не вдалося надіслати. Спробуй ще раз."); }
+    finally { btn.disabled = false; }
+  });
+
+  /* ----- Підказки ----- */
+  let hintCls = null;
+  function setupHints() { hintCls = hintCls || myClass() || 6; renderHints(); }
+  $("#hints-search").addEventListener("input", () => renderHints());
+  function renderHints() {
+    if (!hintCls) return;
+    const mc = myClass();
+    $("#hints-class").innerHTML = CLASSES.map(n => `<button class="chip" type="button" data-c="${n}" aria-pressed="${n === hintCls}">${n} клас${n === mc ? " · твій" : ""}</button>`).join("");
+    $$("#hints-class .chip").forEach(c => c.addEventListener("click", () => { hintCls = Number(c.dataset.c); renderHints(); }));
+    $("#hints-title").textContent = `Підказки · ${hintCls} клас`;
+    const q = $("#hints-search").value.trim().toLowerCase();
+    const list = (HINTS[hintCls] || []).filter(h => !q || (h.s + " " + h.t + " " + h.i.join(" ")).toLowerCase().includes(q));
+    const box = $("#hints-list"); box.replaceChildren();
+    if (!list.length) { box.append(emptyEl("Нічого не знайдено. Спробуй інше слово.")); return; }
+    list.forEach(h => {
+      const card = el("article", "card hint");
+      const ul = el("ul"); h.i.forEach(t => ul.append(el("li", null, t)));
+      card.append(el("span", "eyebrow", h.s), el("h3", null, h.t), ul);
+      box.append(card);
+    });
+  }
 
   /* ----- Оголошення ----- */
   let news = [], newsFilter = "mine";
@@ -373,7 +573,7 @@ function start() {
       const right = el("span"); right.append(`${fmtDay(toDate(n.createdAt))} ${fmtTime(toDate(n.createdAt))}`);
       by.append(author, right);
       card.append(top, el("p", "txt", n.text), by);
-      if (n.uid === me.uid || isAdmin) { const a = el("div", "acts"); a.append(confirmButton("Видалити", "btn ghost sm", () => deleteDoc(d.ref))); card.append(a); }
+      if (n.uid === me.uid || isAdmin || isMod) { const a = el("div", "acts"); a.append(confirmButton("Видалити", "btn ghost sm", () => deleteDoc(d.ref))); card.append(a); }
       box.append(card);
     });
   }
@@ -443,15 +643,15 @@ function start() {
   }
 
   /* ----- Заявки (лише адміністратор) ----- */
-  let apps = [], appFilter = "pending";
+  let apps = [], appFilter = "pending", appsReady = false;
   function setupAdmin() {
     portalSubs.push(onSnapshot(query(collection(db, "users"), orderBy("createdAt", "desc"), limit(500)),
-      s => { apps = s.docs; renderAdmin(); renderModeration(); },
+      s => { apps = s.docs; appsReady = true; renderAdmin(); syncDirectory(); },
       e => { console.error(e); $("#admin-list").replaceChildren(emptyEl("Не вдалося завантажити заявки.")); }));
   }
   function renderAdmin() {
-    const pending = apps.filter(d => d.data().status === "pending").length;
-    const badge = $("#pending-count"); badge.textContent = pending; badge.hidden = !pending;
+    appPending = apps.filter(d => d.data().status === "pending").length;
+    updateAdminBadge();
     const filters = [["pending", "Нові"], ["approved", "Схвалені"], ["rejected", "Відхилені"], ["all", "Усі"]];
     $("#admin-filter").innerHTML = filters.map(([k, t]) => `<button class="chip" type="button" data-f="${k}" aria-pressed="${k === appFilter}">${t}</button>`).join("");
     $$("#admin-filter .chip").forEach(c => c.addEventListener("click", () => { appFilter = c.dataset.f; renderAdmin(); }));
@@ -485,14 +685,54 @@ function start() {
     portalSubs.push(() => { clearInterval(timer); document.removeEventListener("visibilitychange", onVis); });
   }
 
-  /* ----- Модерація (лише адміністратор) ----- */
-  let seen = {}, modClass = "all";
+  /* ----- Чати й запрошення на схвалення (адміністратор) ----- */
+  let appPending = 0, groupPending = 0;
+  function updateAdminBadge() {
+    const n = appPending + groupPending, badge = $("#pending-count");
+    badge.textContent = n; badge.hidden = !n;
+  }
+  function renderGroupRequests() {
+    if (!isAdmin || !inPortal) return;
+    const pend = groups.filter(g => g.status === "pending");
+    const inv = groups.filter(g => g.status === "approved" && (g.invited || []).length);
+    groupPending = pend.length + inv.length;
+    $("#group-req-count").textContent = groupPending;
+    updateAdminBadge();
+    const box = $("#group-requests"); box.replaceChildren();
+    if (!groupPending) { box.append(emptyEl("Нових чатів і запрошень немає.")); return; }
+    const card = (g, title, lines, approve, reject) => {
+      const c = el("article", "post");
+      const top = el("div", "top-line"); top.append(el("h3", null, title), pill("чекає", "warn"));
+      c.append(top);
+      lines.forEach(l => c.append(el("p", "small", l)));
+      const acts = el("div", "acts");
+      const ok = el("button", "btn okb sm", "Схвалити"); ok.type = "button";
+      ok.addEventListener("click", async () => { ok.disabled = true; try { await updateDoc(g.ref, approve); toast("Схвалено"); } catch (e) { console.error(e); toast("Не вдалося"); ok.disabled = false; } });
+      acts.append(ok, confirmButton("Відхилити", "btn badb sm", async () => { await updateDoc(g.ref, reject); toast("Відхилено"); }));
+      c.append(acts); box.append(c);
+    };
+    pend.forEach(g => card(g, `Новий чат «${g.name}»`, [`Створив: ${who([g.owner])}`, `Запрошує: ${who(g.invited || [])}`],
+      { status: "approved", members: arrayUnion(...(g.invited || [])), invited: [] }, { status: "rejected", invited: [] }));
+    inv.forEach(g => card(g, `Запрошення в «${g.name}»`, [`Від: ${who([g.owner])}`, `Кого: ${who(g.invited)}`],
+      { members: arrayUnion(...g.invited), invited: [] }, { invited: [] }));
+  }
+
+  /* ----- Модерація: адміністратор і молодші модератори ----- */
+  let seen = {}, modClass = "all", mods = new Set();
   function setupModeration() {
     portalSubs.push(onSnapshot(collection(db, "presence"),
       s => { seen = {}; s.docs.forEach(d => { seen[d.id] = toDate(d.data({ serverTimestamps: "estimate" }).lastSeen); }); renderModeration(); },
       e => console.error(e)));
+    portalSubs.push(onSnapshot(collection(db, "mods"),
+      s => { mods = new Set(s.docs.map(d => d.id)); renderModeration(); },
+      e => console.error(e)));
     const tick = setInterval(renderModeration, 60 * 1000);
     portalSubs.push(() => clearInterval(tick));
+    $("#mod-head").innerHTML = `<th>Ім'я</th><th>Клас</th><th>Заходив</th>${isOwner ? "<th>Права</th>" : ""}`;
+    $("#mod-note").textContent = isOwner
+      ? "Клас змінюється одразу: у людини відкриються чат і оголошення нового класу. Молодші модератори можуть видаляти повідомлення й оголошення та читати чати всіх класів, але не схвалюють заявки й не змінюють класи."
+      : isAdmin ? "Клас змінюється одразу: у людини відкриються чат і оголошення нового класу."
+      : "Ти молодший модератор: бачиш учасників, читаєш чати всіх класів і можеш видаляти повідомлення та оголошення. Класи змінює лише адміністратор.";
   }
   $("#mod-search").addEventListener("input", () => renderModeration());
   const classOf = p => p.role === "parent" ? p.childClass : p.role === "student" ? p.cls : null;
@@ -505,40 +745,57 @@ function start() {
     return [`${fmtDay(d)} ${fmtTime(d)}`, ""];
   }
   function renderModeration() {
-    if (!isAdmin || !inPortal) return;
-    const members = apps.filter(d => d.data().status === "approved").map(d => ({ id: d.id, ref: d.ref, p: d.data() }));
-    const count = n => members.filter(m => classOf(m.p) === n).length;
+    if (!(isAdmin || isMod) || !inPortal) return;
+    const members = Object.entries(dir).map(([id, p]) => ({ id, p }));
+    const count = n => members.filter(m => m.p.cls === n).length;
     const online = members.filter(m => seenText(seen[m.id])[1] === "on").length;
-    $("#mod-summary").textContent = `Учасників: ${members.length} · онлайн зараз: ${online}`;
+    $("#mod-summary").textContent = `Учасників: ${members.length} · онлайн зараз: ${online} · модераторів: ${mods.size}`;
     const chips = [["all", `Усі (${members.length})`], ...CLASSES.filter(n => count(n)).map(n => [String(n), `${n} клас (${count(n)})`])];
     $("#mod-filter").innerHTML = chips.map(([k, t]) => `<button class="chip" type="button" data-f="${k}" aria-pressed="${k === modClass}">${t}</button>`).join("");
     $$("#mod-filter .chip").forEach(c => c.addEventListener("click", () => { modClass = c.dataset.f; renderModeration(); }));
     const q = $("#mod-search").value.trim().toLowerCase();
     const list = members
-      .filter(m => modClass === "all" || String(classOf(m.p)) === modClass)
+      .filter(m => modClass === "all" || String(m.p.cls) === modClass)
       .filter(m => !q || m.p.name.toLowerCase().includes(q))
       .sort((a, b) => (seen[b.id] || 0) - (seen[a.id] || 0));
+    const cols = isOwner ? 4 : 3;
     const body = $("#mod-rows"); body.replaceChildren();
-    if (!list.length) { const tr = el("tr"); const td = el("td", "muted", "Нікого не знайдено."); td.colSpan = 3; tr.append(td); body.append(tr); return; }
+    if (!list.length) { const tr = el("tr"); const td = el("td", "muted", "Нікого не знайдено."); td.colSpan = cols; tr.append(td); body.append(tr); return; }
     list.forEach(m => {
       const tr = el("tr");
-      const name = el("td"); name.append(el("b", null, m.p.name), el("small", null, (m.id === me.uid ? "ти · " : "") + (ROLE[m.p.role] || "")));
+      const tags = [m.id === me.uid ? "ти" : "", ROLE[m.p.role] || "", m.id === ownerUid ? "головний адмін" : "", mods.has(m.id) ? "мол. модератор" : ""].filter(Boolean).join(" · ");
+      const name = el("td"); name.append(el("b", null, m.p.name), el("small", null, tags));
       const clsTd = el("td");
-      const cur = classOf(m.p);
-      if (cur) {
-        const sel = el("select"); sel.innerHTML = classOptions(); sel.value = String(cur);
+      if (m.p.cls && isAdmin) {
+        const sel = el("select"); sel.innerHTML = classOptions(); sel.value = String(m.p.cls);
         sel.setAttribute("aria-label", `Клас: ${m.p.name}`);
         sel.addEventListener("change", async () => {
           const n = Number(sel.value), field = m.p.role === "parent" ? "childClass" : "cls";
           sel.disabled = true;
-          try { await updateDoc(m.ref, { [field]: n }); toast(`${m.p.name}: тепер ${n} клас`); }
-          catch (e) { console.error(e); toast("Не вдалося змінити клас"); sel.value = String(cur); }
+          try { await updateDoc(doc(db, "users", m.id), { [field]: n }); toast(`${m.p.name}: тепер ${n} клас`); }
+          catch (e) { console.error(e); toast("Не вдалося змінити клас"); sel.value = String(m.p.cls); }
           finally { sel.disabled = false; }
         });
         clsTd.append(sel);
-      } else clsTd.append(el("span", "muted", "—"));
+      } else clsTd.append(el("span", m.p.cls ? null : "muted", m.p.cls ? `${m.p.cls} клас` : "—"));
       const [txt, cls] = seenText(seen[m.id]);
       tr.append(name, clsTd, el("td", "seen " + cls, txt));
+      if (isOwner) {
+        const td = el("td");
+        if (m.id !== me.uid) {
+          const isM = mods.has(m.id);
+          const b = el("button", "btn sm " + (isM ? "ghost" : "okb"), isM ? "Зняти модератора" : "Зробити модератором"); b.type = "button";
+          b.addEventListener("click", async () => {
+            b.disabled = true;
+            try {
+              if (isM) await deleteDoc(doc(db, "mods", m.id)); else await setDoc(doc(db, "mods", m.id), { createdAt: serverTimestamp() });
+              toast(isM ? `${m.p.name} більше не модератор` : `${m.p.name} — молодший модератор`);
+            } catch (e) { console.error(e); toast("Не вдалося"); b.disabled = false; }
+          });
+          td.append(b);
+        }
+        tr.append(td);
+      }
       body.append(tr);
     });
   }

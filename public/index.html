@@ -29,7 +29,7 @@
 
 <!-- Вхід і реєстрація -->
 <main class="screen center" id="s-auth" hidden>
-  <img class="logo-big" src="logo.png" alt="Totosha High-Minds School" width="180" height="180">
+  <img class="logo-big" src="logo.png" alt="Totosha High-Minds School" width="260" height="260">
   <div class="under">
     <span class="stamp">🤫 Тільки для учнів</span>
     <h1>Підпільний портал учнів</h1>
@@ -97,7 +97,7 @@
   <header class="top">
     <div class="top-in">
       <div class="brand">
-        <img class="logo-wide" src="logo-wide.png" alt="Totosha" width="108" height="39">
+        <img class="logo-wide" src="logo-wide.png" alt="Totosha" width="155" height="56">
         <div><b>Підпільний портал <span class="stamp sm">учні only</span></b><small class="muted" id="who"></small></div>
       </div>
       <span class="status" id="lesson" aria-live="polite"></span>
@@ -105,9 +105,10 @@
       <button class="btn ghost sm" type="button" data-logout>Вийти</button>
     </div>
     <nav class="tabs" role="tablist" aria-label="Розділи">
-      <button class="tab" role="tab" data-tab="chat">Чат класу</button>
+      <button class="tab" role="tab" data-tab="chat">Чати</button>
       <button class="tab" role="tab" data-tab="news">Оголошення</button>
       <button class="tab" role="tab" data-tab="schedule">Розклад</button>
+      <button class="tab" role="tab" data-tab="hints">Підказки</button>
       <button class="tab" role="tab" data-tab="admin" hidden>Заявки <span class="badge" id="pending-count" hidden></span></button>
       <button class="tab" role="tab" data-tab="mod" hidden>Модерація</button>
     </nav>
@@ -116,18 +117,40 @@
   <div class="wrap">
     <!-- Чат -->
     <section class="panel" id="p-chat" role="tabpanel">
+      <div class="chips" id="chat-switch" aria-label="Мої чати"></div>
       <div class="head">
         <h2 id="chat-title">Чат класу</h2>
         <label class="inline" for="chat-class" id="chat-class-wrap" hidden>Клас <select id="chat-class"></select></label>
       </div>
-      <div class="card chat">
+      <div class="group-bar" id="group-bar" hidden>
+        <span class="muted small" id="group-members"></span>
+        <div class="acts">
+          <button class="btn ghost sm" type="button" id="b-invite" hidden>Запросити ще</button>
+          <button class="btn ghost sm" type="button" id="b-leave">Вийти з чату</button>
+        </div>
+      </div>
+      <form class="card stack" id="f-group" hidden>
+        <h3 id="group-form-title">Новий чат</h3>
+        <label for="g-name" id="g-name-wrap">Назва чату<input id="g-name" maxlength="40" placeholder="Футбол після уроків"></label>
+        <label for="g-search">Кого запросити<input id="g-search" type="search" placeholder="Пошук за ім'ям"></label>
+        <div class="chips" id="g-class-filter"></div>
+        <div class="pick" id="g-pick"></div>
+        <p class="muted small" id="g-count">Обрано: 0</p>
+        <p class="err" role="alert"></p>
+        <div class="row">
+          <button class="btn" type="submit" id="g-submit">Надіслати адміну на схвалення</button>
+          <button class="btn ghost" type="button" id="g-cancel">Скасувати</button>
+        </div>
+        <p class="muted small">Чат запрацює, щойно адміністратор його схвалить.</p>
+      </form>
+      <div class="card chat" id="chat-box">
         <div class="messages" id="messages" aria-live="polite"></div>
         <form class="composer" id="f-chat">
           <input id="chat-text" maxlength="500" autocomplete="off" placeholder="Напиши повідомлення…" aria-label="Повідомлення">
           <button class="btn" type="submit">Надіслати</button>
         </form>
       </div>
-      <p class="muted small">Тут лише свої. Будь ввічливим — адмін може видаляти повідомлення.</p>
+      <p class="muted small" id="chat-note">Тут лише свої. Будь ввічливим — адмін і модератори можуть видаляти повідомлення.</p>
     </section>
 
     <!-- Оголошення -->
@@ -153,18 +176,30 @@
       <div id="sched-body"></div>
     </section>
 
-    <!-- Заявки (адміністратор) -->
+    <!-- Підказки -->
+    <section class="panel" id="p-hints" role="tabpanel" hidden>
+      <div class="head"><h2 id="hints-title">Підказки</h2><input id="hints-search" type="search" placeholder="Пошук: дроби, Present…" aria-label="Пошук у підказках" style="max-width:260px"></div>
+      <div class="chips" id="hints-class"></div>
+      <div class="hint-grid" id="hints-list"></div>
+      <p class="muted small">Це короткі шпаргалки. Якщо щось не збігається з підручником — вір підручнику.</p>
+    </section>
+
+    <!-- Модерація (адміністратор і молодші модератори) -->
     <section class="panel" id="p-mod" role="tabpanel" hidden>
       <div class="head">
         <div><h2>Модерація</h2><p class="muted small" id="mod-summary"></p></div>
         <input id="mod-search" type="search" placeholder="Пошук за ім'ям" aria-label="Пошук за ім'ям" style="max-width:260px">
       </div>
       <div class="chips" id="mod-filter"></div>
-      <div class="card scroll"><table class="mod-table"><thead><tr><th>Ім'я</th><th>Клас</th><th>Заходив</th></tr></thead><tbody id="mod-rows"></tbody></table></div>
-      <p class="muted small">Клас змінюється одразу: у людини відкриється чат і оголошення нового класу. Бачиш цю вкладку лише ти.</p>
+      <div class="card scroll"><table class="mod-table"><thead><tr id="mod-head"><th>Ім'я</th><th>Клас</th><th>Заходив</th></tr></thead><tbody id="mod-rows"></tbody></table></div>
+      <p class="muted small" id="mod-note">Клас змінюється одразу: у людини відкриється чат і оголошення нового класу.</p>
     </section>
 
     <section class="panel" id="p-admin" role="tabpanel" hidden>
+      <div class="card stack" id="group-requests-box">
+        <div class="head"><h3>Чати на схвалення</h3><span class="pill warn" id="group-req-count">0</span></div>
+        <div class="list" id="group-requests"></div>
+      </div>
       <div class="head"><h2>Заявки на вступ</h2></div>
       <div class="chips" id="admin-filter"></div>
       <div class="list" id="admin-list"></div>
