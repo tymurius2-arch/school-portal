@@ -109,6 +109,7 @@
       <button class="tab" role="tab" data-tab="news">Оголошення</button>
       <button class="tab" role="tab" data-tab="schedule">Розклад</button>
       <button class="tab" role="tab" data-tab="admin" hidden>Заявки <span class="badge" id="pending-count" hidden></span></button>
+      <button class="tab" role="tab" data-tab="mod" hidden>Модерація</button>
     </nav>
   </header>
 
@@ -153,6 +154,16 @@
     </section>
 
     <!-- Заявки (адміністратор) -->
+    <section class="panel" id="p-mod" role="tabpanel" hidden>
+      <div class="head">
+        <div><h2>Модерація</h2><p class="muted small" id="mod-summary"></p></div>
+        <input id="mod-search" type="search" placeholder="Пошук за ім'ям" aria-label="Пошук за ім'ям" style="max-width:260px">
+      </div>
+      <div class="chips" id="mod-filter"></div>
+      <div class="card scroll"><table class="mod-table"><thead><tr><th>Ім'я</th><th>Клас</th><th>Заходив</th></tr></thead><tbody id="mod-rows"></tbody></table></div>
+      <p class="muted small">Клас змінюється одразу: у людини відкриється чат і оголошення нового класу. Бачиш цю вкладку лише ти.</p>
+    </section>
+
     <section class="panel" id="p-admin" role="tabpanel" hidden>
       <div class="head"><h2>Заявки на вступ</h2></div>
       <div class="chips" id="admin-filter"></div>

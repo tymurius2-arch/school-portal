@@ -161,6 +161,18 @@ textarea{resize:vertical; min-height:80px}
 .lesson .s{font-weight:600; min-width:0}
 .lesson.extra .s{font-weight:400; color:var(--muted)}
 
+/* Модерація */
+.scroll{overflow-x:auto}
+.mod-table{border-collapse:collapse; width:100%; font-size:.92rem}
+.mod-table th,.mod-table td{text-align:left; padding:9px 10px; border-bottom:1px solid var(--line); vertical-align:middle}
+.mod-table th{font-size:.72rem; text-transform:uppercase; letter-spacing:.08em; color:var(--muted)}
+.mod-table td small{display:block; color:var(--muted); font-size:.78rem}
+.mod-table select{width:auto; padding:6px 8px}
+.mod-table tr:last-child td{border-bottom:0}
+.seen{white-space:nowrap; font-variant-numeric:tabular-nums}
+.seen.on{color:var(--ok); font-weight:700}
+.seen.on::before{content:""; display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--ok); margin-right:6px; vertical-align:1px}
+
 .toast{position:fixed; left:50%; bottom:calc(20px + env(safe-area-inset-bottom,0px)); transform:translateX(-50%) translateY(140px); background:var(--fg); color:var(--bg); padding:10px 18px; border-radius:12px; font-weight:600; transition:transform .3s; z-index:50; max-width:calc(100% - 32px)}
 .toast.show{transform:translateX(-50%) translateY(0)}
 

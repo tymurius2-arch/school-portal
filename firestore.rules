@@ -82,6 +82,15 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Коли людина востаннє заходила. Бачить лише адміністратор,
+    // записати можна лише свій час і лише поточний.
+    match /presence/{uid} {
+      allow read: if isAdmin();
+      allow write: if signedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['lastSeen'])
+        && request.resource.data.lastSeen == request.time;
+    }
+
     // Чат класу: classes/<номер класу>/messages/<id>
     match /classes/{cls}/messages/{msg} {
       allow read: if canUseClass(int(cls));
