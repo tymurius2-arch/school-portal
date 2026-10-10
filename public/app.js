@@ -170,12 +170,33 @@ function start() {
     stopAll(); me = user; profile = undefined; isAdmin = false; editing = false;
     if (!user) { show("auth"); return; }
     show("loading");
-    try { isAdmin = (await getDoc(doc(db, "admins", user.uid))).exists(); } catch { isAdmin = false; }
+    await checkAdmin(user);
     if (me !== user) return;
     sessionSubs.push(onSnapshot(doc(db, "users", user.uid),
       s => { profile = s.exists() ? s.data({ serverTimestamps: "estimate" }) : null; route(); },
       e => { console.error(e); toast("Немає зв'язку з сервером. Онови сторінку."); }));
   });
+
+  /* ----- Адміністратор ----- */
+  let ownerFree = false;
+  async function checkAdmin(user) {
+    isAdmin = false; ownerFree = false;
+    try {
+      const owner = await getDoc(doc(db, "meta", "owner"));
+      ownerFree = !owner.exists();
+      isAdmin = owner.exists() && owner.data().uid === user.uid;
+      if (!isAdmin) isAdmin = (await getDoc(doc(db, "admins", user.uid))).exists();
+    } catch (e) { console.error(e); }
+    $$("[data-claim]").forEach(b => b.hidden = !ownerFree);
+  }
+  $$("[data-claim] button").forEach(b => b.addEventListener("click", async () => {
+    b.disabled = true;
+    try {
+      await setDoc(doc(db, "meta", "owner"), { uid: me.uid, createdAt: serverTimestamp() });
+      toast("Тепер ти адміністратор порталу");
+    } catch (e) { console.error(e); toast("Адміністратор уже є"); }
+    await checkAdmin(me); b.disabled = false; route();
+  }));
 
   function route() {
     if (registering || !me || profile === undefined) return;

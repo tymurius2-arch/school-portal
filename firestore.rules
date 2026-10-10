@@ -6,8 +6,14 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     function signedIn() { return request.auth != null; }
+    // Адміністратор: власник порталу (перший, хто натиснув «Стати адміністратором»)
+    // або той, кого додали в колекцію admins.
+    function isOwner() {
+      return signedIn() && exists(/databases/$(database)/documents/meta/owner)
+        && get(/databases/$(database)/documents/meta/owner).data.uid == request.auth.uid;
+    }
     function isAdmin() {
-      return signedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+      return isOwner() || (signedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
     }
     function hasProfile() {
       return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
@@ -35,10 +41,20 @@ service cloud.firestore {
         && (!('note' in d) || shortText(d.note, 0, 300));
     }
 
-    // Адміністраторів додають лише вручну в консолі Firebase.
+    // Власника можна призначити лише один раз — поки документа ще немає.
+    match /meta/owner {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['uid', 'createdAt'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.createdAt == request.time;
+      allow update, delete: if false;
+    }
+
+    // Додаткових адміністраторів додає власник у консолі Firebase.
     match /admins/{uid} {
       allow read: if signedIn() && request.auth.uid == uid;
-      allow write: if false;
+      allow write: if isOwner();
     }
 
     // Заявки = профілі користувачів.
