@@ -1,0 +1,101 @@
+rules_version = '2';
+
+// Правила доступу до бази порталу. Їх перевіряє сервер Firebase,
+// тож без схваленої заявки до чату й оголошень не дістатися навіть в обхід сайту.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function isAdmin() {
+      return signedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+    function hasProfile() {
+      return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+    function me() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function approved() { return hasProfile() && me().status == 'approved'; }
+    // Клас учня; для батьків — клас дитини. Вчителі бачать усі класи.
+    function myClass() { return me().role == 'parent' ? me().childClass : me().cls; }
+    function canUseClass(c) {
+      return isAdmin() || (approved() && (me().role == 'teacher' || myClass() == c));
+    }
+    function shortText(v, min, max) { return v is string && v.size() >= min && v.size() <= max; }
+
+    function validProfile(d) {
+      return d.keys().hasOnly(['name', 'role', 'cls', 'subject', 'child', 'childClass',
+                               'contact', 'note', 'status', 'createdAt', 'reviewedAt'])
+        && shortText(d.name, 2, 60)
+        && d.role in ['student', 'teacher', 'parent']
+        && d.status in ['pending', 'approved', 'rejected']
+        && (d.role != 'student' || (d.cls is int && d.cls >= 1 && d.cls <= 9))
+        && (d.role != 'teacher' || shortText(d.subject, 2, 60))
+        && (d.role != 'parent' || (shortText(d.child, 2, 60)
+                                   && d.childClass is int && d.childClass >= 1 && d.childClass <= 9))
+        && (!('contact' in d) || shortText(d.contact, 0, 80))
+        && (!('note' in d) || shortText(d.note, 0, 300));
+    }
+
+    // Адміністраторів додають лише вручну в консолі Firebase.
+    match /admins/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow write: if false;
+    }
+
+    // Заявки = профілі користувачів.
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+
+      // Нова заявка: лише від свого імені й лише зі статусом «на розгляді».
+      allow create: if signedIn() && request.auth.uid == uid
+        && validProfile(request.resource.data)
+        && request.resource.data.status == 'pending'
+        && request.resource.data.createdAt == request.time
+        && !('reviewedAt' in request.resource.data);
+
+      // Адміністратор схвалює, відхиляє або виправляє заявку.
+      allow update: if isAdmin() && validProfile(request.resource.data);
+
+      // Користувач може виправити й подати заявку знову, поки її не схвалили.
+      allow update: if signedIn() && request.auth.uid == uid
+        && resource.data.status != 'approved'
+        && validProfile(request.resource.data)
+        && request.resource.data.status == 'pending'
+        && request.resource.data.createdAt == request.time
+        && !('reviewedAt' in request.resource.data);
+
+      allow delete: if isAdmin();
+    }
+
+    // Чат класу: classes/<номер класу>/messages/<id>
+    match /classes/{cls}/messages/{msg} {
+      allow read: if canUseClass(int(cls));
+      allow create: if canUseClass(int(cls)) && hasProfile()
+        && request.resource.data.keys().hasOnly(['uid', 'name', 'role', 'text', 'createdAt'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.name == me().name
+        && request.resource.data.role == me().role
+        && shortText(request.resource.data.text, 1, 500)
+        && request.resource.data.createdAt == request.time;
+      allow update: if false;
+      allow delete: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
+    }
+
+    // Оголошення: cls = 0 — для всієї школи, 1–9 — для класу.
+    match /announcements/{id} {
+      allow read: if isAdmin() || approved();
+      allow create: if (isAdmin() || approved()) && hasProfile()
+        && request.resource.data.keys().hasOnly(['cls', 'title', 'text', 'uid', 'name', 'role', 'createdAt'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.name == me().name
+        && request.resource.data.role == me().role
+        && request.resource.data.cls is int
+        && request.resource.data.cls >= 0 && request.resource.data.cls <= 9
+        && (isAdmin() || me().role == 'teacher' || request.resource.data.cls == myClass())
+        && shortText(request.resource.data.title, 2, 80)
+        && shortText(request.resource.data.text, 1, 1000)
+        && request.resource.data.createdAt == request.time;
+      allow update: if false;
+      allow delete: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
+    }
+  }
+}

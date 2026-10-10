@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Портал класу</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap">
+<link rel="stylesheet" href="style.css">
+<script type="module" src="app.js"></script>
+</head>
+<body>
+
+<!-- Завантаження -->
+<main class="screen center" id="s-loading">
+  <div class="planet" aria-hidden="true"></div>
+  <p class="muted">Завантаження…</p>
+</main>
+
+<!-- Сайт не налаштовано -->
+<main class="screen center" id="s-setup" hidden>
+  <div class="card narrow stack">
+    <h1>Портал ще не підключено</h1>
+    <p>Встав налаштування свого проєкту Firebase у файл <code>config.js</code>. Покрокова інструкція — у <code>README.md</code>.</p>
+  </div>
+</main>
+
+<!-- Вхід і реєстрація -->
+<main class="screen center" id="s-auth" hidden>
+  <div class="brand">
+    <div class="planet sm" aria-hidden="true"></div>
+    <div><b class="school-name">Наша школа</b><small class="muted">Портал класу</small></div>
+  </div>
+  <div class="card narrow stack">
+    <div class="seg" role="tablist">
+      <button type="button" role="tab" id="t-login" aria-selected="true">Вхід</button>
+      <button type="button" role="tab" id="t-register" aria-selected="false">Заявка на вступ</button>
+    </div>
+
+    <form id="f-login" class="stack" novalidate>
+      <label for="l-email">Електронна пошта<input id="l-email" type="email" autocomplete="email" required></label>
+      <label for="l-pass">Пароль<input id="l-pass" type="password" autocomplete="current-password" required></label>
+      <p class="err" role="alert"></p>
+      <button class="btn" type="submit">Увійти</button>
+      <button class="link" type="button" id="b-reset">Забув пароль?</button>
+    </form>
+
+    <form id="f-register" class="stack" novalidate hidden>
+      <p class="muted small">Заповни заявку. Адміністратор перевірить її, і після схвалення ти потрапиш у портал свого класу.</p>
+      <label for="r-email">Електронна пошта<input id="r-email" type="email" autocomplete="email" required></label>
+      <label for="r-pass">Пароль (мінімум 6 символів)<input id="r-pass" type="password" autocomplete="new-password" minlength="6" required></label>
+      <div class="profile-fields" data-prefix="r"></div>
+      <p class="err" role="alert"></p>
+      <button class="btn" type="submit">Надіслати заявку</button>
+    </form>
+  </div>
+</main>
+
+<!-- Заявка для того, хто вже увійшов, але заявки ще немає або її відхилено -->
+<main class="screen center" id="s-apply" hidden>
+  <div class="card narrow stack">
+    <h1 id="apply-title">Заявка на вступ</h1>
+    <p class="notice" id="apply-note" hidden></p>
+    <form id="f-apply" class="stack" novalidate>
+      <div class="profile-fields" data-prefix="a"></div>
+      <p class="err" role="alert"></p>
+      <button class="btn" type="submit">Надіслати заявку</button>
+    </form>
+    <button class="link" type="button" data-logout>Вийти</button>
+  </div>
+</main>
+
+<!-- Очікування схвалення -->
+<main class="screen center" id="s-wait" hidden>
+  <div class="card narrow stack wait">
+    <div class="orbit" aria-hidden="true"><span></span></div>
+    <h1>Очікуйте схвалення</h1>
+    <p>Заявку отримано. Щойно адміністратор її схвалить, портал відкриється сам — сторінку оновлювати не треба.</p>
+    <dl class="details" id="wait-details"></dl>
+    <div class="row">
+      <button class="btn ghost" type="button" id="b-edit">Виправити заявку</button>
+      <button class="btn ghost" type="button" data-logout>Вийти</button>
+    </div>
+  </div>
+</main>
+
+<!-- Портал -->
+<div class="screen" id="s-portal" hidden>
+  <header class="top">
+    <div class="top-in">
+      <div class="brand">
+        <div class="planet sm" aria-hidden="true"></div>
+        <div><b class="school-name">Наша школа</b><small class="muted" id="who"></small></div>
+      </div>
+      <span class="status" id="lesson" aria-live="polite"></span>
+      <button class="icon-btn" type="button" id="b-theme" aria-label="Змінити тему">☀️</button>
+      <button class="btn ghost sm" type="button" data-logout>Вийти</button>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="Розділи">
+      <button class="tab" role="tab" data-tab="chat">Чат класу</button>
+      <button class="tab" role="tab" data-tab="news">Оголошення</button>
+      <button class="tab" role="tab" data-tab="schedule">Розклад</button>
+      <button class="tab" role="tab" data-tab="admin" hidden>Заявки <span class="badge" id="pending-count" hidden></span></button>
+    </nav>
+  </header>
+
+  <div class="wrap">
+    <!-- Чат -->
+    <section class="panel" id="p-chat" role="tabpanel">
+      <div class="head">
+        <h2 id="chat-title">Чат класу</h2>
+        <label class="inline" for="chat-class" id="chat-class-wrap" hidden>Клас <select id="chat-class"></select></label>
+      </div>
+      <div class="card chat">
+        <div class="messages" id="messages" aria-live="polite"></div>
+        <form class="composer" id="f-chat">
+          <input id="chat-text" maxlength="500" autocomplete="off" placeholder="Напиши повідомлення…" aria-label="Повідомлення">
+          <button class="btn" type="submit">Надіслати</button>
+        </form>
+      </div>
+      <p class="muted small">Будь ввічливим. Адміністратор може видаляти повідомлення.</p>
+    </section>
+
+    <!-- Оголошення -->
+    <section class="panel" id="p-news" role="tabpanel" hidden>
+      <div class="head"><h2>Оголошення</h2></div>
+      <div class="chips" id="news-filter"></div>
+      <div class="grid-2">
+        <div class="list" id="news-list"></div>
+        <form class="card stack" id="f-news">
+          <h3>Нове оголошення</h3>
+          <label for="n-cls">Для кого<select id="n-cls"></select></label>
+          <label for="n-title">Заголовок<input id="n-title" maxlength="80" required></label>
+          <label for="n-text">Текст<textarea id="n-text" maxlength="1000" required></textarea></label>
+          <p class="err" role="alert"></p>
+          <button class="btn" type="submit">Опублікувати</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- Розклад -->
+    <section class="panel" id="p-schedule" role="tabpanel" hidden>
+      <div class="head"><h2 id="sched-title">Розклад</h2><div class="chips" id="day-chips"></div></div>
+      <div id="sched-body"></div>
+    </section>
+
+    <!-- Заявки (адміністратор) -->
+    <section class="panel" id="p-admin" role="tabpanel" hidden>
+      <div class="head"><h2>Заявки на вступ</h2></div>
+      <div class="chips" id="admin-filter"></div>
+      <div class="list" id="admin-list"></div>
+    </section>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status"></div>
+
+<template id="tpl-profile">
+  <fieldset class="roles">
+    <legend class="eyebrow">Хто ти?</legend>
+    <label class="role"><input type="radio" name="role" value="student" checked><span><b>Учень</b><small>Навчаюсь у школі</small></span></label>
+    <label class="role"><input type="radio" name="role" value="teacher"><span><b>Вчитель</b><small>Викладаю предмет</small></span></label>
+    <label class="role"><input type="radio" name="role" value="parent"><span><b>Батьки</b><small>Мама, тато або опікун</small></span></label>
+  </fieldset>
+  <label>Прізвище та ім'я<input name="name" maxlength="60" autocomplete="name" placeholder="Коваленко Андрій" required></label>
+  <label data-for="student">Клас<select name="cls" class="class-select"></select></label>
+  <label data-for="teacher" hidden>Предмет, який викладаєте<input name="subject" maxlength="60" placeholder="Математика"></label>
+  <div data-for="parent" hidden class="row">
+    <label>Ім'я дитини<input name="child" maxlength="60" placeholder="Андрій"></label>
+    <label>Клас дитини<select name="childClass" class="class-select"></select></label>
+  </div>
+  <label>Як з тобою зв'язатися <span class="muted">(необов'язково)</span><input name="contact" maxlength="80" placeholder="Telegram або телефон батьків"></label>
+  <label>Коментар <span class="muted">(необов'язково)</span><textarea name="note" maxlength="300"></textarea></label>
+</template>
+
+</body>
+</html>
