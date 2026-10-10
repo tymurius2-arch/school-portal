@@ -260,10 +260,12 @@ function start() {
     // Заявка самого адміністратора не має висіти серед нових.
     if (isAdmin && profile.status !== "approved") updateDoc(doc(db, "users", me.uid), { status: "approved", reviewedAt: serverTimestamp() }).catch(console.error);
     $(".tab[data-tab=admin]").hidden = !isAdmin;
+    $(".tab[data-tab=mod]").hidden = !isAdmin;
+    startPresence();
     setupChat(); setupNews(); setupSchedule();
-    if (isAdmin) setupAdmin();
+    if (isAdmin) { setupAdmin(); setupModeration(); }
     const saved = store.get("tab", "chat");
-    openTab(saved === "admin" && !isAdmin ? "chat" : saved);
+    openTab((saved === "admin" || saved === "mod") && !isAdmin ? "chat" : saved);
   }
 
   function openTab(id) {
@@ -444,7 +446,7 @@ function start() {
   let apps = [], appFilter = "pending";
   function setupAdmin() {
     portalSubs.push(onSnapshot(query(collection(db, "users"), orderBy("createdAt", "desc"), limit(500)),
-      s => { apps = s.docs; renderAdmin(); },
+      s => { apps = s.docs; renderAdmin(); renderModeration(); },
       e => { console.error(e); $("#admin-list").replaceChildren(emptyEl("Не вдалося завантажити заявки.")); }));
   }
   function renderAdmin() {
@@ -470,6 +472,74 @@ function start() {
       if (d.id !== me.uid) acts.append(confirmButton("Видалити", "btn ghost sm", async () => { await deleteDoc(d.ref); toast("Заявку видалено"); }));
       card.append(top, el("span", "by", `Подано ${fmtDay(toDate(p.createdAt))} ${fmtTime(toDate(p.createdAt))}`), dl, acts);
       box.append(card);
+    });
+  }
+
+  /* ----- Хто й коли заходив ----- */
+  function startPresence() {
+    const touch = () => { if (me && document.visibilityState === "visible") setDoc(doc(db, "presence", me.uid), { lastSeen: serverTimestamp() }).catch(console.error); };
+    touch();
+    const timer = setInterval(touch, 4 * 60 * 1000);
+    const onVis = () => { if (document.visibilityState === "visible") touch(); };
+    document.addEventListener("visibilitychange", onVis);
+    portalSubs.push(() => { clearInterval(timer); document.removeEventListener("visibilitychange", onVis); });
+  }
+
+  /* ----- Модерація (лише адміністратор) ----- */
+  let seen = {}, modClass = "all";
+  function setupModeration() {
+    portalSubs.push(onSnapshot(collection(db, "presence"),
+      s => { seen = {}; s.docs.forEach(d => { seen[d.id] = toDate(d.data({ serverTimestamps: "estimate" }).lastSeen); }); renderModeration(); },
+      e => console.error(e)));
+    const tick = setInterval(renderModeration, 60 * 1000);
+    portalSubs.push(() => clearInterval(tick));
+  }
+  $("#mod-search").addEventListener("input", () => renderModeration());
+  const classOf = p => p.role === "parent" ? p.childClass : p.role === "student" ? p.cls : null;
+  function seenText(d) {
+    if (!d) return ["ще не заходив", ""];
+    const min = Math.floor((Date.now() - d.getTime()) / 60000);
+    if (min < 5) return ["онлайн", "on"];
+    if (min < 60) return [`${min} хв тому`, ""];
+    if (min < 24 * 60) return [`${Math.floor(min / 60)} год тому`, ""];
+    return [`${fmtDay(d)} ${fmtTime(d)}`, ""];
+  }
+  function renderModeration() {
+    if (!isAdmin || !inPortal) return;
+    const members = apps.filter(d => d.data().status === "approved").map(d => ({ id: d.id, ref: d.ref, p: d.data() }));
+    const count = n => members.filter(m => classOf(m.p) === n).length;
+    const online = members.filter(m => seenText(seen[m.id])[1] === "on").length;
+    $("#mod-summary").textContent = `Учасників: ${members.length} · онлайн зараз: ${online}`;
+    const chips = [["all", `Усі (${members.length})`], ...CLASSES.filter(n => count(n)).map(n => [String(n), `${n} клас (${count(n)})`])];
+    $("#mod-filter").innerHTML = chips.map(([k, t]) => `<button class="chip" type="button" data-f="${k}" aria-pressed="${k === modClass}">${t}</button>`).join("");
+    $$("#mod-filter .chip").forEach(c => c.addEventListener("click", () => { modClass = c.dataset.f; renderModeration(); }));
+    const q = $("#mod-search").value.trim().toLowerCase();
+    const list = members
+      .filter(m => modClass === "all" || String(classOf(m.p)) === modClass)
+      .filter(m => !q || m.p.name.toLowerCase().includes(q))
+      .sort((a, b) => (seen[b.id] || 0) - (seen[a.id] || 0));
+    const body = $("#mod-rows"); body.replaceChildren();
+    if (!list.length) { const tr = el("tr"); const td = el("td", "muted", "Нікого не знайдено."); td.colSpan = 3; tr.append(td); body.append(tr); return; }
+    list.forEach(m => {
+      const tr = el("tr");
+      const name = el("td"); name.append(el("b", null, m.p.name), el("small", null, (m.id === me.uid ? "ти · " : "") + (ROLE[m.p.role] || "")));
+      const clsTd = el("td");
+      const cur = classOf(m.p);
+      if (cur) {
+        const sel = el("select"); sel.innerHTML = classOptions(); sel.value = String(cur);
+        sel.setAttribute("aria-label", `Клас: ${m.p.name}`);
+        sel.addEventListener("change", async () => {
+          const n = Number(sel.value), field = m.p.role === "parent" ? "childClass" : "cls";
+          sel.disabled = true;
+          try { await updateDoc(m.ref, { [field]: n }); toast(`${m.p.name}: тепер ${n} клас`); }
+          catch (e) { console.error(e); toast("Не вдалося змінити клас"); sel.value = String(cur); }
+          finally { sel.disabled = false; }
+        });
+        clsTd.append(sel);
+      } else clsTd.append(el("span", "muted", "—"));
+      const [txt, cls] = seenText(seen[m.id]);
+      tr.append(name, clsTd, el("td", "seen " + cls, txt));
+      body.append(tr);
     });
   }
 }
