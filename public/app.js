@@ -24,7 +24,7 @@ function toast(msg) {
   clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove("show"), 2600);
 }
 const ROLE = { student: "Учень", teacher: "Вчитель", parent: "Батьки" };
-const STATUS = { pending: ["на розгляді", "warn"], approved: ["схвалено", "ok"], rejected: ["відхилено", "bad"] };
+const STATUS = { pending: ["на розгляді", "warn"], approved: ["схвалено", "ok"], rejected: ["відхилено", "bad"], kicked: ["кікнуто", "bad"] };
 const CLASSES = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 const classOptions = (withSchool = false) =>
   (withSchool ? `<option value="0">Уся школа</option>` : "") + CLASSES.map(n => `<option value="${n}">${n} клас</option>`).join("");
@@ -196,7 +196,7 @@ function start() {
 
   onAuthStateChanged(auth, async user => {
     stopAll(); me = user; profile = undefined; isAdmin = false; editing = false;
-    if (!user) { show("auth"); return; }
+    if (!user) { show(maint.on ? "maint" : "auth"); return; }
     show("loading"); watchLoading();
     await checkAdmin(user);
     if (me !== user) return;
@@ -252,11 +252,38 @@ function start() {
   let loadTimer = null;
   const watchLoading = () => { clearTimeout(loadTimer); loadTimer = setTimeout(() => { if (!$("#s-loading").hidden) showError({ code: "unavailable" }); }, 20000); };
 
+  /* ----- Технічна перерва ----- */
+  let maint = { on: false, message: "" };
+  onSnapshot(doc(db, "meta", "maintenance"), s => {
+    maint = s.exists() ? s.data() : { on: false, message: "" };
+    $("#maint-text").textContent = maint.message || "Ми оновлюємо портал. Скоро все запрацює — сторінку оновлювати не треба.";
+    renderMaintBox();
+    if (!me) { if (!$("#s-auth").hidden || !$("#s-maint").hidden) show(maint.on ? "maint" : "auth"); return; }
+    route();
+  }, e => console.error(e));
+  function renderMaintBox() {
+    $("#maint-banner").hidden = !(maint.on && isAdmin && inPortal);
+    $("#maint-state").textContent = maint.on ? "увімкнено" : "вимкнено";
+    $("#maint-state").className = "pill " + (maint.on ? "bad" : "ok");
+    $("#maint-on").hidden = !!maint.on; $("#maint-off").hidden = !maint.on;
+    if (maint.on && document.activeElement !== $("#maint-msg")) $("#maint-msg").value = maint.message || "";
+  }
+  async function setMaint(on) {
+    try {
+      await setDoc(doc(db, "meta", "maintenance"), { on, message: $("#maint-msg").value.trim().slice(0, 200), at: serverTimestamp() });
+      toast(on ? "Технічну перерву увімкнено" : "Технічну перерву вимкнено");
+    } catch (e) { console.error(e); toast("Не вдалося"); }
+  }
+  $("#maint-on").addEventListener("click", () => setMaint(true));
+  $("#maint-off").addEventListener("click", () => setMaint(false));
+
   function route() {
     if (registering || !me || profile === undefined) return;
     clearTimeout(loadTimer);
-    if (profile && (isAdmin || profile.status === "approved")) { enterPortal(); return; }
-    if (inPortal) { stopPortal(); if (profile) toast("Доступ до порталу закрито адміністратором"); }
+    // Під час перерви пускаємо лише адміністратора.
+    if (maint.on && !isAdmin) { if (inPortal) stopPortal(); show("maint"); return; }
+    if (profile && (isAdmin || profile.status === "approved")) { enterPortal(); renderMaintBox(); return; }
+    if (inPortal) { stopPortal(); if (profile && profile.status !== "kicked") toast("Доступ до порталу закрито адміністратором"); }
     if (!profile) { openApply(null, null); return; }
     if (profile.status === "rejected") { openApply(profile, "Заявку відхилено. Виправ дані й надішли знову."); return; }
     if (editing) return;
@@ -295,7 +322,16 @@ function start() {
     dl.replaceChildren();
     profileRows(p).forEach(([k, v]) => dl.append(el("dt", null, k), el("dd", null, v || "—")));
   }
-  function renderWait() { fillDetails($("#wait-details"), profile); }
+  function renderWait() {
+    fillDetails($("#wait-details"), profile);
+    const kicked = profile.status === "kicked";
+    $("#s-wait .wait").classList.toggle("kicked", kicked);
+    $("#wait-title").textContent = kicked ? "Тебе кікнуто" : "Очікуй схвалення";
+    $("#wait-text").textContent = kicked
+      ? "Адміністратор тимчасово закрив тобі доступ. Очікуй, поки модератор знову тебе схвалить — портал відкриється сам."
+      : "Заявку отримано. Адмін перевіряє, що ти свій. Щойно тебе впустять, портал відкриється сам — сторінку оновлювати не треба.";
+    $("#b-edit").hidden = kicked;
+  }
 
   /* ----- Портал ----- */
   const myClass = () => profile.role === "parent" ? profile.childClass : profile.role === "student" ? profile.cls : null;
@@ -691,7 +727,7 @@ function start() {
   function renderAdmin() {
     appPending = apps.filter(d => d.data().status === "pending").length;
     updateAdminBadge();
-    const filters = [["pending", "Нові"], ["approved", "Схвалені"], ["rejected", "Відхилені"], ["all", "Усі"]];
+    const filters = [["pending", "Нові"], ["approved", "Схвалені"], ["kicked", "Кікнуті"], ["rejected", "Відхилені"], ["all", "Усі"]];
     $("#admin-filter").innerHTML = filters.map(([k, t]) => `<button class="chip" type="button" data-f="${k}" aria-pressed="${k === appFilter}">${t}</button>`).join("");
     $$("#admin-filter .chip").forEach(c => c.addEventListener("click", () => { appFilter = c.dataset.f; renderAdmin(); }));
     const list = apps.filter(d => appFilter === "all" || d.data().status === appFilter);
@@ -705,9 +741,10 @@ function start() {
       top.append(el("h3", null, `${ROLE[p.role] || ""} · ${p.name}`), pill(st, sc));
       const dl = el("dl", "details"); fillDetails(dl, p);
       const acts = el("div", "acts");
-      const set = status => async () => { await updateDoc(d.ref, { status, reviewedAt: serverTimestamp() }); toast(status === "approved" ? "Заявку схвалено" : "Заявку відхилено"); };
-      if (p.status !== "approved") { const b = el("button", "btn okb sm", "Схвалити"); b.type = "button"; b.addEventListener("click", async () => { b.disabled = true; try { await set("approved")(); } catch (ex) { console.error(ex); toast("Не вдалося"); b.disabled = false; } }); acts.append(b); }
-      if (p.status !== "rejected" && d.id !== me.uid) acts.append(confirmButton(p.status === "approved" ? "Закрити доступ" : "Відхилити", "btn badb sm", set("rejected")));
+      const set = status => async () => { await updateDoc(d.ref, { status, reviewedAt: serverTimestamp() }); toast({ approved: "Заявку схвалено", kicked: `${p.name}: кікнуто`, rejected: "Заявку відхилено" }[status]); };
+      if (p.status !== "approved") { const b = el("button", "btn okb sm", p.status === "kicked" ? "Повернути" : "Схвалити"); b.type = "button"; b.addEventListener("click", async () => { b.disabled = true; try { await set("approved")(); } catch (ex) { console.error(ex); toast("Не вдалося"); b.disabled = false; } }); acts.append(b); }
+      if (p.status === "approved" && d.id !== me.uid) acts.append(confirmButton("Кікнути", "btn badb sm", set("kicked")));
+      if (p.status === "pending") acts.append(confirmButton("Відхилити", "btn badb sm", set("rejected")));
       if (d.id !== me.uid) acts.append(confirmButton("Видалити", "btn ghost sm", async () => { await deleteDoc(d.ref); toast("Заявку видалено"); }));
       card.append(top, el("span", "by", `Подано ${fmtDay(toDate(p.createdAt))} ${fmtTime(toDate(p.createdAt))}`), dl, acts);
       box.append(card);
@@ -1004,7 +1041,8 @@ function start() {
       e => console.error(e)));
     const tick = setInterval(renderModeration, 60 * 1000);
     portalSubs.push(() => clearInterval(tick));
-    $("#mod-head").innerHTML = `<th>Ім'я</th><th>Клас</th><th>Заходив</th>${isOwner ? "<th>Права</th>" : ""}`;
+    $("#mod-head").innerHTML = `<th>Ім'я</th><th>Клас</th><th>Заходив</th>${isAdmin ? "<th>Дії</th>" : ""}`;
+    $("#maint-box").hidden = !isAdmin; renderMaintBox();
     $("#mod-note").textContent = isOwner
       ? "Клас змінюється одразу: у людини відкриються чат і оголошення нового класу. Молодші модератори можуть видаляти повідомлення й оголошення та читати чати всіх класів, але не схвалюють заявки й не змінюють класи."
       : isAdmin ? "Клас змінюється одразу: у людини відкриються чат і оголошення нового класу."
@@ -1034,7 +1072,7 @@ function start() {
       .filter(m => modClass === "all" || String(m.p.cls) === modClass)
       .filter(m => !q || m.p.name.toLowerCase().includes(q))
       .sort((a, b) => (seen[b.id] || 0) - (seen[a.id] || 0));
-    const cols = isOwner ? 4 : 3;
+    const cols = isAdmin ? 4 : 3;
     const body = $("#mod-rows"); body.replaceChildren();
     if (!list.length) { const tr = el("tr"); const td = el("td", "muted", "Нікого не знайдено."); td.colSpan = cols; tr.append(td); body.append(tr); return; }
     list.forEach(m => {
@@ -1056,9 +1094,13 @@ function start() {
       } else clsTd.append(el("span", m.p.cls ? null : "muted", m.p.cls ? `${m.p.cls} клас` : "—"));
       const [txt, cls] = seenText(seen[m.id]);
       tr.append(name, clsTd, el("td", "seen " + cls, txt));
-      if (isOwner) {
-        const td = el("td");
-        if (m.id !== me.uid) {
+      if (isAdmin) {
+        const td = el("td"); td.className = "acts";
+        if (m.id !== me.uid && m.id !== ownerUid) td.append(confirmButton("Кікнути", "btn badb sm", async () => {
+          await updateDoc(doc(db, "users", m.id), { status: "kicked", reviewedAt: serverTimestamp() });
+          toast(`${m.p.name}: кікнуто`);
+        }));
+        if (isOwner && m.id !== me.uid) {
           const isM = mods.has(m.id);
           const b = el("button", "btn sm " + (isM ? "ghost" : "okb"), isM ? "Зняти модератора" : "Зробити модератором"); b.type = "button";
           b.addEventListener("click", async () => {

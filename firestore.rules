@@ -23,7 +23,12 @@ service cloud.firestore {
       return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
     }
     function me() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
-    function approved() { return hasProfile() && me().status == 'approved'; }
+    // Технічна перерва: поки вона увімкнена, працює лише адміністратор.
+    function maintenance() {
+      return exists(/databases/$(database)/documents/meta/maintenance)
+        && get(/databases/$(database)/documents/meta/maintenance).data.on == true;
+    }
+    function approved() { return hasProfile() && me().status == 'approved' && !maintenance(); }
     // Клас учня; для батьків — клас дитини. Вчителі бачать усі класи.
     function myClass() { return me().role == 'parent' ? me().childClass : me().cls; }
     function canUseClass(c) {
@@ -36,7 +41,7 @@ service cloud.firestore {
                                'contact', 'note', 'status', 'createdAt', 'reviewedAt'])
         && shortText(d.name, 2, 60)
         && d.role in ['student', 'teacher', 'parent']
-        && d.status in ['pending', 'approved', 'rejected']
+        && d.status in ['pending', 'approved', 'rejected', 'kicked']
         && (d.role != 'student' || (d.cls is int && d.cls >= 1 && d.cls <= 9))
         && (d.role != 'teacher' || shortText(d.subject, 2, 60))
         && (d.role != 'parent' || (shortText(d.child, 2, 60)
@@ -59,6 +64,16 @@ service cloud.firestore {
     match /admins/{uid} {
       allow read: if signedIn() && request.auth.uid == uid;
       allow write: if isOwner();
+    }
+
+    // Технічна перерва: бачать усі (навіть до входу), вмикає адміністратор.
+    match /meta/maintenance {
+      allow read: if true;
+      allow write: if isAdmin()
+        && request.resource.data.keys().hasOnly(['on', 'message', 'at'])
+        && request.resource.data.on is bool
+        && shortText(request.resource.data.message, 0, 200)
+        && request.resource.data.at == request.time;
     }
 
     // Молодших модераторів призначає й знімає лише власник.
@@ -98,8 +113,9 @@ service cloud.firestore {
       allow update: if isAdmin() && validProfile(request.resource.data);
 
       // Користувач може виправити й подати заявку знову, поки її не схвалили.
+      // Кікнутий чекає, поки його поверне адміністратор.
       allow update: if signedIn() && request.auth.uid == uid
-        && resource.data.status != 'approved'
+        && resource.data.status != 'approved' && resource.data.status != 'kicked'
         && validProfile(request.resource.data)
         && request.resource.data.status == 'pending'
         && request.resource.data.createdAt == request.time

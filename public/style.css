@@ -216,6 +216,11 @@ textarea{resize:vertical; min-height:80px}
 .res{display:grid; gap:8px}
 .res .btn{justify-self:start; text-decoration:none}
 
+/* Кік і технічна перерва */
+.gear{font-size:3.2rem; animation:spin 6s linear infinite}
+.maint-banner{background:var(--bad); color:#fff; text-align:center; font-weight:700; padding:8px 16px; font-size:.9rem}
+.wait.kicked .orbit::before{background:var(--bad)}
+
 /* Налаштування */
 .skins{display:grid; gap:12px; grid-template-columns:repeat(auto-fill,minmax(min(100%,180px),1fr))}
 .skin{display:grid; gap:10px; text-align:left; padding:14px; border-radius:14px; border:2px solid var(--line); cursor:pointer; color:#fff; font:inherit}
