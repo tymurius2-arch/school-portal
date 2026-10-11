@@ -191,6 +191,21 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // Оновлення сайту: читають усі учасники, публікує адміністратор.
+    match /updates/{id} {
+      allow read: if approved() || isAdmin();
+      allow create: if isAdmin() && hasProfile()
+        && request.resource.data.keys().hasOnly(['ver', 'title', 'text', 'by', 'byName', 'at'])
+        && shortText(request.resource.data.ver, 0, 20)
+        && shortText(request.resource.data.title, 2, 100)
+        && shortText(request.resource.data.text, 1, 3000)
+        && request.resource.data.by == request.auth.uid
+        && request.resource.data.byName == me().name
+        && request.resource.data.at == request.time;
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
     // Списки класів (хто має бути на порталі). Бачать адмін і модератори, змінює адмін.
     match /roster/{cls} {
       allow read: if isStaff();
