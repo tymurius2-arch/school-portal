@@ -141,6 +141,7 @@
       <button class="tab" role="tab" data-tab="library">📚 Бібліотека</button>
       <button class="tab" role="tab" data-tab="tools">☰ Корисне</button>
       <button class="tab" role="tab" data-tab="updates">🆕 Оновлення <span class="badge new" id="upd-new" hidden>NEW</span></button>
+      <button class="tab" role="tab" data-tab="profile">👤 Профіль</button>
       <button class="tab" role="tab" data-tab="settings">⚙ Налаштування</button>
       <button class="tab" role="tab" data-tab="admin" hidden>Заявки <span class="badge" id="pending-count" hidden></span></button>
       <button class="tab" role="tab" data-tab="roster" hidden>📋 Учні</button>
@@ -375,26 +376,41 @@
       <div class="list" id="upd-list"></div>
     </section>
 
-    <!-- Налаштування -->
-    <section class="panel" id="p-settings" role="tabpanel" hidden>
-      <div class="head"><h2>Налаштування</h2></div>
-      <div class="card stack">
-        <h3>Тема</h3>
-        <div class="skins" id="skins"></div>
+    <!-- Профіль (як у Telegram) -->
+    <section class="panel" id="p-profile" role="tabpanel" hidden>
+      <button class="link back" type="button" id="pv-back" hidden>← Мій профіль</button>
+      <div class="card pv">
+        <div class="pv-ava" id="pv-ava">🙂</div>
+        <h2 class="pv-name" id="pv-name"></h2>
+        <div class="pv-badges" id="pv-badges"></div>
+        <p class="muted" id="pv-sub"></p>
+        <p class="pv-bio" id="pv-bio"></p>
+        <div class="pv-rows" id="pv-rows"></div>
+        <div class="acts" id="pv-acts"></div>
       </div>
       <div class="card stack" id="profile-box" hidden>
-        <h3>Мій профіль</h3>
+        <h3>Редагувати профіль</h3>
         <div class="profile-preview" id="pf-preview"></div>
         <span class="eyebrow">Аватарка</span>
         <div class="emoji-grid" id="pf-emoji"></div>
         <span class="eyebrow">Колір імені</span>
         <div class="chips" id="pf-color"></div>
+        <label for="pf-bio">Про себе <span class="muted">(до 150 символів)</span><textarea id="pf-bio" maxlength="150" rows="2" placeholder="Люблю футбол і Minecraft ⚽"></textarea></label>
         <span class="eyebrow">День народження (рік не потрібен)</span>
         <div class="row">
           <label for="pf-day">День<select id="pf-day"></select></label>
           <label for="pf-month">Місяць<select id="pf-month"></select></label>
         </div>
         <button class="btn" type="button" id="pf-save">Зберегти профіль</button>
+      </div>
+    </section>
+
+    <!-- Налаштування -->
+    <section class="panel" id="p-settings" role="tabpanel" hidden>
+      <div class="head"><h2>Налаштування</h2></div>
+      <div class="card stack">
+        <h3>Тема</h3>
+        <div class="skins" id="skins"></div>
       </div>
       <div class="card stack">
         <h3>Розмір тексту</h3>

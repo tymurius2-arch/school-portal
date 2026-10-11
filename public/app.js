@@ -385,10 +385,11 @@ function start() {
     $$(".tab").forEach(t => t.setAttribute("aria-selected", String(t.dataset.tab === id)));
     $$(".panel").forEach(p => p.hidden = p.id !== "p-" + id);
     store.set("tab", id);
+    if (id === "profile") renderProfileView();
     if (id === "updates") { updSeenAtOpen = 0; markUpdatesSeen(); renderUpdates(); }
     if (id === "chat") { scrollChat(true); if (typeof markRead === "function") markRead(curKey()); }
   }
-  $$(".tab").forEach(t => t.addEventListener("click", () => openTab(t.dataset.tab)));
+  $$(".tab").forEach(t => t.addEventListener("click", () => { if (t.dataset.tab === "profile") pvUid = null; openTab(t.dataset.tab); }));
 
   /* ----- Список учасників (для запрошень і модерації) ----- */
   let dir = {}, dirReady = false;
@@ -640,7 +641,7 @@ function start() {
   let profs = {}, pfEmoji = null, pfColor = null, pfLoaded = false, lastDocs = null, lastKind = null;
   const pad2 = n => String(n).padStart(2, "0");
   function setupProfiles() {
-    $("#profile-box").hidden = false;
+    setupRoleBadges();
     $("#pf-day").innerHTML = `<option value="">—</option>` + Array.from({ length: 31 }, (_, i) => `<option>${i + 1}</option>`).join("");
     $("#pf-month").innerHTML = `<option value="">—</option>` + MONTHS.map((m, i) => `<option value="${i + 1}">${m}</option>`).join("");
     portalSubs.push(onSnapshot(collection(db, "profiles"), s => {
@@ -649,10 +650,11 @@ function start() {
         const p = profs[me.uid] || {};
         // Не перетираємо те, що людина вже встигла обрати, поки профіль вантажився.
         pfEmoji = pfEmoji || p.emoji || null; pfColor = pfColor || p.color || null;
+        if (p.bio && !$("#pf-bio").value) $("#pf-bio").value = p.bio;
         if (p.bday && !$("#pf-day").value && !$("#pf-month").value) { const [m, d] = p.bday.split("-").map(Number); $("#pf-day").value = String(d); $("#pf-month").value = String(m); }
         pfLoaded = true;
       }
-      renderProfileForm(); renderBday();
+      renderProfileForm(); renderBday(); if (!$("#p-profile").hidden) renderProfileView();
       if (lastDocs) renderMessages(lastDocs, lastKind);
     }, e => console.error(e)));
     portalSubs.push(() => { pfLoaded = false; pfEmoji = null; pfColor = null; profs = {}; lastDocs = null; });
@@ -668,6 +670,7 @@ function start() {
   $("#pf-save").addEventListener("click", async () => {
     const d = Number($("#pf-day").value), m = Number($("#pf-month").value);
     const data = { emoji: pfEmoji || "🙂", color: pfColor || "violet" };
+    const bio = $("#pf-bio").value.trim().slice(0, 150); if (bio) data.bio = bio;
     if (d && m) {
       if (d > new Date(2024, m, 0).getDate()) { toast("У цьому місяці немає такого дня"); return; }
       data.bday = `${pad2(m)}-${pad2(d)}`;
@@ -687,12 +690,61 @@ function start() {
     box.hidden = !box.textContent;
   }
 
+  /* ===== Профіль як у Telegram, корони для адмінів ===== */
+  let pvUid = null, adminSet = new Set(), modSet = new Set(), quizMonthDocs = [];
+  function setupRoleBadges() {
+    portalSubs.push(onSnapshot(collection(db, "admins"), s => { adminSet = new Set(s.docs.map(d => d.id)); refreshNames(); }, () => {}));
+    portalSubs.push(onSnapshot(collection(db, "mods"), s => { modSet = new Set(s.docs.map(d => d.id)); refreshNames(); }, () => {}));
+  }
+  function refreshNames() { if (lastDocs) renderMessages(lastDocs, lastKind); if (!$("#p-profile").hidden) renderProfileView(); }
+  const isAdminUid = uid => uid === ownerUid || adminSet.has(uid);
+  const roleMark = uid => isAdminUid(uid) ? "👑" : modSet.has(uid) ? "🛡" : "";
+  function openProfile(uid) { pvUid = uid === me.uid ? null : uid; openTab("profile"); }
+  function renderProfileView() {
+    const uid = pvUid || me.uid, isMe = uid === me.uid;
+    const p = profs[uid] || {};
+    const d = isMe ? { name: profile.name, role: profile.role, cls: myClass() } : (dir[uid] || { name: "Учасник", role: "student", cls: null });
+    $("#pv-back").hidden = isMe;
+    $("#profile-box").hidden = !isMe;
+    const ava = $("#pv-ava"); ava.textContent = p.emoji || "🙂";
+    ava.style.background = COLORS[p.color] || "";
+    $("#pv-name").textContent = d.name + (roleMark(uid) ? " " + roleMark(uid) : "");
+    $("#pv-name").style.color = COLORS[p.color] || "";
+    const badges = $("#pv-badges"); badges.replaceChildren();
+    if (uid === ownerUid) badges.append(pill("👑 Головний адмін", "info"));
+    else if (adminSet.has(uid)) badges.append(pill("👑 Адміністратор", "info"));
+    if (modSet.has(uid)) badges.append(pill("🛡 Молодший модератор", "ok"));
+    if (isMe) badges.append(pill("це ти", "warn"));
+    const sub = [ROLE[d.role] || "", d.cls ? `${d.cls} клас` : ""].filter(Boolean);
+    if ((isAdmin || isMod) && !isMe) { const st = seenText(seen[uid]); sub.push(st[0] === "онлайн" ? "в мережі" : `заходив ${st[0]}`); }
+    if (isMe) sub.push("в мережі");
+    $("#pv-sub").textContent = sub.join(" · ");
+    $("#pv-bio").textContent = p.bio || (isMe ? "Розкажи про себе в полі «Про себе» нижче." : "");
+    $("#pv-bio").className = "pv-bio" + (p.bio ? "" : " muted");
+    const rows = $("#pv-rows"); rows.replaceChildren();
+    const row = (k, v) => { const r = el("div"); r.append(el("span", null, k), el("b", null, v)); rows.append(r); };
+    if (p.bday) { const [m, dd] = p.bday.split("-").map(Number); row("🎂 День народження", `${dd} ${MONTHS[m - 1]}`); }
+    const quizOk = quizMonthDocs.filter(q => { const r = q.data(); return r.uid === uid && r.ok; }).length;
+    row("🏆 Тест дня (цей місяць)", `✓ ${quizOk}`);
+    if (d.cls) row("🏫 Клас", `${d.cls} клас`);
+    const acts = $("#pv-acts"); acts.replaceChildren();
+    if (!isMe) {
+      const chat = el("button", "btn", "💬 Створити чат"); chat.type = "button";
+      chat.addEventListener("click", () => { openTab("chat"); openGroupForm("create"); gSel.add(uid); $("#g-name").value = `${profile.name.split(" ")[0]} і ${d.name.split(" ")[0]}`; renderPicker(); });
+      acts.append(chat);
+    }
+  }
+  $("#pv-back").addEventListener("click", () => { pvUid = null; renderProfileView(); });
+
   /* ===== Реакції, опитування, скарги ===== */
   const REACTS = ["👍", "😂", "❤️", "🔥", "😮"];
   function nameEl(uid, name, mine) {
     const p = profs[uid] || {};
-    const b = el("b", null, (p.emoji ? p.emoji + " " : "") + (mine ? "Ти" : name));
+    const mark = roleMark(uid);
+    const b = el("b", "who-link", (p.emoji ? p.emoji + " " : "") + (mine ? "Ти" : name) + (mark ? " " + mark : ""));
     if (COLORS[p.color]) b.style.color = COLORS[p.color];
+    b.title = "Відкрити профіль";
+    b.addEventListener("click", () => openProfile(uid));
     return b;
   }
   function react(d, r, e) {
@@ -973,6 +1025,7 @@ function start() {
     show(null);
     try { const s = await getDoc(ref); if (s.exists()) show(s.data().ok ? q.a : (q.a + 1) % q.o.length); } catch (e) { console.error(e); }
     quizUnsub = onSnapshot(query(collection(db, "quiz"), where("month", "==", month), limit(1000)), s => {
+      quizMonthDocs = s.docs;
       const score = {};
       s.docs.forEach(d => { const r = d.data(); if (r.cls === mc && r.ok) { score[r.uid] = score[r.uid] || { name: r.name, n: 0 }; score[r.uid].n++; } });
       const top = Object.entries(score).sort((a, b) => b[1].n - a[1].n).slice(0, 10);
@@ -1547,7 +1600,7 @@ function start() {
     list.forEach(m => {
       const tr = el("tr");
       const tags = [m.id === me.uid ? "ти" : "", ROLE[m.p.role] || "", m.id === ownerUid ? "головний адмін" : "", mods.has(m.id) ? "мол. модератор" : ""].filter(Boolean).join(" · ");
-      const name = el("td"); name.append(el("b", null, m.p.name), el("small", null, tags));
+      const name = el("td"); const nb = nameEl(m.id, m.p.name, false); name.append(nb, el("small", null, tags));
       const clsTd = el("td");
       if (m.p.cls && isAdmin) {
         const sel = el("select"); sel.innerHTML = classOptions(); sel.value = String(m.p.cls);
