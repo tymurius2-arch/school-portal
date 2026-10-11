@@ -9,6 +9,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { firebaseConfig, SCHOOL } from "./config.js";
 import { HINTS } from "./hints.js";
+import { TEXTBOOKS } from "./textbooks.js";
 
 /* ---------- Дрібниці ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -757,6 +758,16 @@ function start() {
       const a = el("a", "btn sm", "Відкрити"); a.href = r.url; a.target = "_blank"; a.rel = "noopener";
       card.append(el("span", "eyebrow", r.icon + " Офіційне джерело"), el("h3", null, r.title), el("p", "small muted", r.note), a);
       off.append(card);
+    });
+    const tb = $("#lib-textbooks"); tb.replaceChildren();
+    const tbList = (TEXTBOOKS[libCls] || []).filter(b => !q || [b.t, b.a, b.s].join(" ").toLowerCase().includes(q));
+    $("#lib-tb-title").hidden = !tbList.length;
+    tbList.forEach(b => {
+      const card = el("article", "card book");
+      const a = el("a", null, b.t); a.href = b.url; a.target = "_blank"; a.rel = "noopener";
+      const info = el("div"); info.append(a, el("small", null, [b.s, b.a].filter(Boolean).join(" · ")));
+      card.append(el("span", "ic", "📗"), info, el("span"));
+      tb.append(card);
     });
     const forClass = books.map(d => ({ d, b: d.data() })).filter(x => x.b.cls === libCls || x.b.cls === 0);
     const subjects = [...new Set(forClass.map(x => x.b.subject))].sort((a, b) => a.localeCompare(b, "uk"));
