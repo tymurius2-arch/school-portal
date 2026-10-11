@@ -87,11 +87,20 @@
 </main>
 
 <!-- Очікування схвалення -->
+<main class="screen center" id="s-maint" hidden>
+  <div class="card narrow stack wait">
+    <div class="gear" aria-hidden="true">🛠</div>
+    <h1>Технічна перерва</h1>
+    <p id="maint-text">Ми оновлюємо портал. Скоро все запрацює — сторінку оновлювати не треба.</p>
+    <button class="btn ghost" type="button" data-logout id="maint-logout">Вийти</button>
+  </div>
+</main>
+
 <main class="screen center" id="s-wait" hidden>
   <div class="card narrow stack wait">
     <div class="orbit" aria-hidden="true"><span></span></div>
-    <h1>Очікуй схвалення</h1>
-    <p>Заявку отримано. Адмін перевіряє, що ти свій. Щойно тебе впустять, портал відкриється сам — сторінку оновлювати не треба.</p>
+    <h1 id="wait-title">Очікуй схвалення</h1>
+    <p id="wait-text">Заявку отримано. Адмін перевіряє, що ти свій. Щойно тебе впустять, портал відкриється сам — сторінку оновлювати не треба.</p>
     <dl class="details" id="wait-details"></dl>
     <div class="claim stack" data-claim hidden>
       <p class="small">На порталі ще немає адміністратора. Якщо ти його створюєш — натисни кнопку. Це можна зробити лише один раз.</p>
@@ -128,6 +137,7 @@
     </nav>
   </header>
 
+  <div class="maint-banner" id="maint-banner" hidden>🛠 Увімкнено технічну перерву: учні зараз бачать екран перерви. Вимкнути можна у вкладці «Модерація».</div>
   <div class="wrap">
     <!-- Чат -->
     <section class="panel" id="p-chat" role="tabpanel">
@@ -335,6 +345,15 @@
       <div class="head">
         <div><h2>Модерація</h2><p class="muted small" id="mod-summary"></p></div>
         <input id="mod-search" type="search" placeholder="Пошук за ім'ям" aria-label="Пошук за ім'ям" style="max-width:260px">
+      </div>
+      <div class="card stack" id="maint-box" hidden>
+        <div class="head"><h3>Технічна перерва</h3><span class="pill" id="maint-state">вимкнено</span></div>
+        <label for="maint-msg">Повідомлення для всіх<input id="maint-msg" maxlength="200" placeholder="Оновлюємо сайт, повернемось о 18:00"></label>
+        <div class="row">
+          <button class="btn badb" type="button" id="maint-on">Увімкнути перерву</button>
+          <button class="btn okb" type="button" id="maint-off">Вимкнути перерву</button>
+        </div>
+        <p class="muted small">Під час перерви всі, крім адміністратора, бачать екран «Технічна перерва», а чати й оголошення закриті й на сервері.</p>
       </div>
       <div class="chips" id="mod-filter"></div>
       <div class="card scroll"><table class="mod-table"><thead><tr id="mod-head"><th>Ім'я</th><th>Клас</th><th>Заходив</th></tr></thead><tbody id="mod-rows"></tbody></table></div>
