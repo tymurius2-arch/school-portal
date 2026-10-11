@@ -140,6 +140,7 @@
       <button class="tab" role="tab" data-tab="hints">Підказки</button>
       <button class="tab" role="tab" data-tab="library">📚 Бібліотека</button>
       <button class="tab" role="tab" data-tab="tools">☰ Корисне</button>
+      <button class="tab" role="tab" data-tab="updates">🆕 Оновлення <span class="badge new" id="upd-new" hidden>NEW</span></button>
       <button class="tab" role="tab" data-tab="settings">⚙ Налаштування</button>
       <button class="tab" role="tab" data-tab="admin" hidden>Заявки <span class="badge" id="pending-count" hidden></span></button>
       <button class="tab" role="tab" data-tab="roster" hidden>📋 Учні</button>
@@ -356,6 +357,22 @@
           </ul>
         </article>
       </div>
+    </section>
+
+    <!-- Оновлення -->
+    <section class="panel" id="p-updates" role="tabpanel" hidden>
+      <div class="head"><h2>Оновлення порталу</h2></div>
+      <form class="card stack" id="f-update" hidden>
+        <h3>Нове оновлення</h3>
+        <div class="row">
+          <label for="up-ver" style="flex:0 1 140px">Версія <span class="muted">(необов'язково)</span><input id="up-ver" maxlength="20" placeholder="v1.5"></label>
+          <label for="up-title">Заголовок<input id="up-title" maxlength="100" placeholder="Додали реакції та опитування"></label>
+        </div>
+        <label for="up-text">Що нового (кожен пункт з нового рядка)<textarea id="up-text" rows="6" maxlength="3000" placeholder="Реакції на повідомлення&#10;Опитування в чатах"></textarea></label>
+        <p class="err" role="alert"></p>
+        <button class="btn" type="submit">Опублікувати оновлення</button>
+      </form>
+      <div class="list" id="upd-list"></div>
     </section>
 
     <!-- Налаштування -->

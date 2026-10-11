@@ -373,7 +373,7 @@ function start() {
     $(".tab[data-tab=roster]").hidden = !(isAdmin || isMod);
     startPresence();
     setupDirectory(); setupChat(); setupGroups(); setupNews(); setupSchedule(); setupHints(); setupTools(); setupLibrary();
-    setupProfiles(); setupUnread(); setupMyMute(); setupQuiz(); setupLog();
+    setupProfiles(); setupUnread(); setupMyMute(); setupQuiz(); setupLog(); setupUpdates();
     if (isAdmin || isMod) { setupReports(); setupRoster(); }
     if (isAdmin) setupAdmin();
     if (isAdmin || isMod) setupModeration();
@@ -385,6 +385,7 @@ function start() {
     $$(".tab").forEach(t => t.setAttribute("aria-selected", String(t.dataset.tab === id)));
     $$(".panel").forEach(p => p.hidden = p.id !== "p-" + id);
     store.set("tab", id);
+    if (id === "updates") { updSeenAtOpen = 0; markUpdatesSeen(); renderUpdates(); }
     if (id === "chat") { scrollChat(true); if (typeof markRead === "function") markRead(curKey()); }
   }
   $$(".tab").forEach(t => t.addEventListener("click", () => openTab(t.dataset.tab)));
@@ -511,6 +512,55 @@ function start() {
     const box = $("#messages");
     if (force || box.scrollHeight - box.scrollTop - box.clientHeight < 120) box.scrollTop = box.scrollHeight;
   }
+  /* ===== Оновлення порталу ===== */
+  let updates = [], updSeenAtOpen = 0;
+  const updKey = () => `updSeen.${me ? me.uid : ""}`;
+  function setupUpdates() {
+    $("#f-update").hidden = !isAdmin;
+    portalSubs.push(onSnapshot(query(collection(db, "updates"), orderBy("at", "desc"), limit(50)), s => {
+      updates = s.docs;
+      if (!$("#p-updates").hidden) markUpdatesSeen(); else renderUpdBadge();
+      renderUpdates();
+    }, e => console.error(e)));
+  }
+  const latestUpd = () => { const d = updates[0]; const t = d && toDate(d.data({ serverTimestamps: "estimate" }).at); return t ? t.getTime() : 0; };
+  function renderUpdBadge() { $("#upd-new").hidden = !(latestUpd() > store.get(updKey(), 0)); }
+  function markUpdatesSeen() {
+    if (!updSeenAtOpen) updSeenAtOpen = store.get(updKey(), 0) || 1;   // що було новим у момент відкриття — підсвічуємо
+    store.set(updKey(), Math.max(latestUpd(), Date.now()));
+    renderUpdBadge();
+  }
+  function renderUpdates() {
+    const box = $("#upd-list"); box.replaceChildren();
+    if (!updates.length) { box.append(emptyEl(isAdmin ? "Тут ще немає оновлень. Опублікуй перше у формі вище." : "Тут з'являтимуться новини про оновлення порталу.")); return; }
+    updates.forEach(d => {
+      const u = d.data({ serverTimestamps: "estimate" }), t = toDate(u.at);
+      const card = el("article", "card upd" + (updSeenAtOpen && t && t.getTime() > updSeenAtOpen ? " fresh" : ""));
+      const top = el("div", "top-line");
+      const h = el("h3", null, u.title); top.append(h);
+      const meta = el("span", "muted small", [u.ver, `${fmtDay(t)} ${fmtTime(t)}`].filter(Boolean).join(" · ")); top.append(meta);
+      const lines = String(u.text).split("\n").map(x => x.replace(/^[-•*]\s*/, "").trim()).filter(Boolean);
+      const body = lines.length > 1 ? el("ul") : el("p", "txt");
+      if (lines.length > 1) lines.forEach(l => body.append(el("li", null, l))); else body.textContent = lines[0] || "";
+      card.append(top, body);
+      if (isAdmin) { const a = el("div", "acts"); a.append(confirmButton("Видалити", "btn ghost sm", async () => { await deleteDoc(d.ref); logAction("Видалив оновлення", "", u.title); })); card.append(a); }
+      box.append(card);
+    });
+  }
+  $("#f-update").addEventListener("submit", async e => {
+    e.preventDefault(); const f = e.target; formErr(f);
+    const ver = $("#up-ver").value.trim(), title = $("#up-title").value.trim(), text = $("#up-text").value.trim();
+    if (title.length < 2) { formErr(f, "Додай заголовок."); return; }
+    if (!text) { formErr(f, "Напиши, що нового."); return; }
+    const btn = $("button[type=submit]", f); btn.disabled = true;
+    try {
+      await addDoc(collection(db, "updates"), { ver, title, text, by: me.uid, byName: profile.name, at: serverTimestamp() });
+      ["up-ver", "up-title", "up-text"].forEach(id => $("#" + id).value = "");
+      toast("Оновлення опубліковано"); logAction("Опублікував оновлення", "", title);
+    } catch (ex) { console.error(ex); formErr(f, "Не вдалося опублікувати."); }
+    finally { btn.disabled = false; }
+  });
+
   /* ===== Учні: порівняння списку класу з тими, хто на порталі ===== */
   let rosters = {}, roCls = null;
   function setupRoster() {
