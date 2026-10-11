@@ -1,15 +1,16 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
   getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword,
-  signOut, sendPasswordResetEmail, connectAuthEmulator
+  signOut, sendPasswordResetEmail, connectAuthEmulator, GoogleAuthProvider, signInWithPopup
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   getFirestore, connectFirestoreEmulator, doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc,
-  collection, query, where, orderBy, limit, onSnapshot, serverTimestamp, arrayUnion, arrayRemove
+  collection, query, where, orderBy, limit, onSnapshot, serverTimestamp, arrayUnion, arrayRemove, deleteField, Timestamp
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { firebaseConfig, SCHOOL } from "./config.js";
 import { HINTS } from "./hints.js";
 import { TEXTBOOKS } from "./textbooks.js";
+import { QUIZ } from "./quiz.js";
 
 /* ---------- Дрібниці ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -165,6 +166,19 @@ function start() {
     catch (ex) { formErr(f, authMessage(ex)); }
   });
 
+  $("#b-google").addEventListener("click", async () => {
+    const out = $("#google-err"); out.textContent = "";
+    try { await signInWithPopup(auth, new GoogleAuthProvider()); }
+    catch (e) {
+      const c = e && e.code || "";
+      if (c === "auth/popup-closed-by-user" || c === "auth/cancelled-popup-request") return;
+      out.textContent = c === "auth/operation-not-allowed" ? "Вхід через Google ще не ввімкнено. Адміністратору: Firebase → Authentication → Sign-in method → Google → Enable."
+        : c === "auth/popup-blocked" ? "Браузер заблокував вікно входу. Дозволь спливаючі вікна для цього сайту."
+        : c === "auth/unauthorized-domain" ? "Цей сайт не доданий у Firebase → Authentication → Settings → Authorized domains."
+        : authMessage(e);
+    }
+  });
+
   let registering = false;
   $("#f-register").addEventListener("submit", async e => {
     e.preventDefault(); const f = e.target; formErr(f);
@@ -272,6 +286,7 @@ function start() {
     try {
       await setDoc(doc(db, "meta", "maintenance"), { on, message: $("#maint-msg").value.trim().slice(0, 200), at: serverTimestamp() });
       toast(on ? "Технічну перерву увімкнено" : "Технічну перерву вимкнено");
+      logAction(on ? "Увімкнув технічну перерву" : "Вимкнув технічну перерву", "", "");
     } catch (e) { console.error(e); toast("Не вдалося"); }
   }
   $("#maint-on").addEventListener("click", () => setMaint(true));
@@ -294,6 +309,7 @@ function start() {
   function openApply(p, note) {
     const f = $("#f-apply"); formErr(f);
     fillProfile(f, p);
+    if (!p && me && me.displayName && !f.elements.name.value) f.elements.name.value = me.displayName;
     $("#apply-title").textContent = p ? "Виправ заявку" : "Заявка на вступ";
     $("#apply-note").hidden = !note; $("#apply-note").textContent = note || "";
     show("apply");
@@ -345,7 +361,7 @@ function start() {
     const cls = myClass();
     $("#who").textContent = [profile.name, roleLabel(), cls ? `${cls} клас` : ""].filter(Boolean).join(" · ");
     if (inPortal) {
-      if (cls !== lastClass) { lastClass = cls; hintCls = cls || hintCls; setupChat(); setupNewsForm(); renderNews(); setupSchedule(); renderHints(); setupTools(); libCls = cls || libCls; renderLibrary(); }
+      if (cls !== lastClass) { lastClass = cls; hintCls = cls || hintCls; setupChat(); setupNewsForm(); renderNews(); setupSchedule(); renderHints(); setupTools(); libCls = cls || libCls; renderLibrary(); setupQuiz(); syncWatchers(); renderBday(); }
       return;
     }
     inPortal = true; lastClass = cls;
@@ -356,6 +372,8 @@ function start() {
     $(".tab[data-tab=mod]").hidden = !(isAdmin || isMod);
     startPresence();
     setupDirectory(); setupChat(); setupGroups(); setupNews(); setupSchedule(); setupHints(); setupTools(); setupLibrary();
+    setupProfiles(); setupUnread(); setupMyMute(); setupQuiz(); setupLog();
+    if (isAdmin || isMod) setupReports();
     if (isAdmin) setupAdmin();
     if (isAdmin || isMod) setupModeration();
     openTab(store.get("tab", "chat"));
@@ -366,7 +384,7 @@ function start() {
     $$(".tab").forEach(t => t.setAttribute("aria-selected", String(t.dataset.tab === id)));
     $$(".panel").forEach(p => p.hidden = p.id !== "p-" + id);
     store.set("tab", id);
-    if (id === "chat") scrollChat(true);
+    if (id === "chat") { scrollChat(true); if (typeof markRead === "function") markRead(curKey()); }
   }
   $$(".tab").forEach(t => t.addEventListener("click", () => openTab(t.dataset.tab)));
 
@@ -378,7 +396,7 @@ function start() {
       if (!$("#f-group").hidden) renderPicker();
       const g = current && current.kind === "group" && groups.find(x => x.id === current.id);
       if (g) renderGroupBar(g);
-      renderGroupRequests(); renderModeration(); syncDirectory(); renderPicker2();
+      renderGroupRequests(); renderModeration(); syncDirectory(); renderPicker2(); renderBday();
     }, e => console.error(e)));
   }
   // Адміністратор підтримує список в актуальному стані: схвалені — є, інші — ні.
@@ -415,9 +433,9 @@ function start() {
       b.setAttribute("aria-pressed", String(pressed)); b.addEventListener("click", onClick); box.append(b); return b;
     };
     const c = classChatCls();
-    mk(c ? `Чат ${c} класу` : "Чат класу", !!current && current.kind === "class", () => openClassChat(classChatCls()));
+    addBadge(mk(c ? `Чат ${c} класу` : "Чат класу", !!current && current.kind === "class", () => openClassChat(classChatCls())), "c" + c);
     groups.filter(g => g.members.includes(me.uid)).sort((a, b) => a.name.localeCompare(b.name, "uk")).forEach(g => {
-      if (g.status === "approved") { mk(g.name, !!current && current.kind === "group" && current.id === g.id, () => openGroupChat(g.id)); return; }
+      if (g.status === "approved") { addBadge(mk(g.name, !!current && current.kind === "group" && current.id === g.id, () => openGroupChat(g.id)), "g" + g.id); return; }
       const b = mk(g.name + (g.status === "pending" ? " · чекає" : " · відхилено"), false,
         () => toast(g.status === "pending" ? "Чат чекає схвалення адміністратора" : "Адміністратор відхилив цей чат"), " muted");
       b.append(el("span", "dot"));
@@ -434,7 +452,7 @@ function start() {
     chatUnsub && chatUnsub();
     const box = $("#messages"); box.replaceChildren(emptyEl("Завантаження…"));
     chatUnsub = onSnapshot(q,
-      s => renderMessages(s.docs.slice().reverse(), kind),
+      s => { renderMessages(s.docs.slice().reverse(), kind); if (isViewing(curKey())) markRead(curKey()); },
       e => { console.error(e); box.replaceChildren(emptyEl("Немає доступу до цього чату.")); });
   }
   function showChatBox() { $("#f-group").hidden = true; $("#chat-box").hidden = false; }
@@ -445,6 +463,7 @@ function start() {
     $("#chat-class-wrap").hidden = !canPickClass();
     $("#group-bar").hidden = true;
     setComposer(canWriteClass(cls), "Тут можна лише читати — писати можна в чат свого класу");
+    applyMute(); $("#f-poll").hidden = true; markRead(curKey());
     listen(query(collection(db, "classes", String(cls), "messages"), orderBy("createdAt", "desc"), limit(200)), "class");
     renderSwitch();
   }
@@ -456,6 +475,7 @@ function start() {
     $("#chat-class-wrap").hidden = true;
     renderGroupBar(g);
     setComposer(true);
+    applyMute(); $("#f-poll").hidden = true; markRead(curKey());
     listen(query(collection(db, "groups", id, "messages"), orderBy("createdAt", "desc"), limit(200)), "group");
     renderSwitch();
   }
@@ -482,7 +502,7 @@ function start() {
         if (!g || !g.members.includes(me.uid) || g.status !== "approved") openClassChat(classChatCls());
         else { $("#chat-title").textContent = g.name; renderGroupBar(g); }
       }
-      renderSwitch(); renderGroupRequests();
+      renderSwitch(); renderGroupRequests(); syncWatchers();
     }, e => console.error(e)));
   }
 
@@ -490,7 +510,111 @@ function start() {
     const box = $("#messages");
     if (force || box.scrollHeight - box.scrollTop - box.clientHeight < 120) box.scrollTop = box.scrollHeight;
   }
+  /* ===== Профіль: аватарка-емодзі, колір, день народження ===== */
+  const COLORS = { violet: "#9C8CFF", pink: "#FF6FD8", cyan: "#4FD3EA", green: "#4FD08F", yellow: "#FFC93C", orange: "#FF9F43", red: "#FF7A82", blue: "#6FA8FF" };
+  const COLOR_NAMES = { violet: "Фіолетовий", pink: "Рожевий", cyan: "Бірюзовий", green: "Зелений", yellow: "Жовтий", orange: "Помаранчевий", red: "Червоний", blue: "Синій" };
+  const EMOJIS = ["😎", "🦊", "🐱", "🐶", "🐼", "🦁", "🐸", "🐧", "🦄", "🐲", "👾", "🤖", "👻", "🚀", "⚽", "🏀", "🎮", "🎧", "🎨", "📚", "🌟", "🔥", "🍕", "🌈"];
+  const MONTHS = ["січня", "лютого", "березня", "квітня", "травня", "червня", "липня", "серпня", "вересня", "жовтня", "листопада", "грудня"];
+  let profs = {}, pfEmoji = null, pfColor = null, pfLoaded = false, lastDocs = null, lastKind = null;
+  const pad2 = n => String(n).padStart(2, "0");
+  function setupProfiles() {
+    $("#profile-box").hidden = false;
+    $("#pf-day").innerHTML = `<option value="">—</option>` + Array.from({ length: 31 }, (_, i) => `<option>${i + 1}</option>`).join("");
+    $("#pf-month").innerHTML = `<option value="">—</option>` + MONTHS.map((m, i) => `<option value="${i + 1}">${m}</option>`).join("");
+    portalSubs.push(onSnapshot(collection(db, "profiles"), s => {
+      profs = {}; s.docs.forEach(d => { profs[d.id] = d.data(); });
+      if (!pfLoaded) {
+        const p = profs[me.uid] || {};
+        // Не перетираємо те, що людина вже встигла обрати, поки профіль вантажився.
+        pfEmoji = pfEmoji || p.emoji || null; pfColor = pfColor || p.color || null;
+        if (p.bday && !$("#pf-day").value && !$("#pf-month").value) { const [m, d] = p.bday.split("-").map(Number); $("#pf-day").value = String(d); $("#pf-month").value = String(m); }
+        pfLoaded = true;
+      }
+      renderProfileForm(); renderBday();
+      if (lastDocs) renderMessages(lastDocs, lastKind);
+    }, e => console.error(e)));
+    portalSubs.push(() => { pfLoaded = false; pfEmoji = null; pfColor = null; profs = {}; lastDocs = null; });
+  }
+  function renderProfileForm() {
+    const pv = $("#pf-preview"); pv.textContent = `${pfEmoji || "🙂"} ${profile.name}`;
+    pv.style.color = COLORS[pfColor] || "";
+    const g = $("#pf-emoji"); g.replaceChildren();
+    EMOJIS.forEach(e => { const b = el("button", null, e); b.type = "button"; b.setAttribute("aria-pressed", String(e === pfEmoji)); b.addEventListener("click", () => { pfEmoji = e; renderProfileForm(); }); g.append(b); });
+    $("#pf-color").innerHTML = Object.keys(COLORS).map(k => `<button class="chip" type="button" data-c="${k}" aria-pressed="${k === pfColor}" style="color:${COLORS[k]}">● ${COLOR_NAMES[k]}</button>`).join("");
+    $$("#pf-color .chip").forEach(c => c.addEventListener("click", () => { pfColor = c.dataset.c; renderProfileForm(); }));
+  }
+  $("#pf-save").addEventListener("click", async () => {
+    const d = Number($("#pf-day").value), m = Number($("#pf-month").value);
+    const data = { emoji: pfEmoji || "🙂", color: pfColor || "violet" };
+    if (d && m) {
+      if (d > new Date(2024, m, 0).getDate()) { toast("У цьому місяці немає такого дня"); return; }
+      data.bday = `${pad2(m)}-${pad2(d)}`;
+    }
+    try { await setDoc(doc(db, "profiles", me.uid), data); toast("Профіль збережено"); }
+    catch (e) { console.error(e); toast("Не вдалося зберегти профіль"); }
+  });
+  function renderBday() {
+    const now = new Date(), today = `${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`, mc = myClass();
+    const names = Object.entries(profs)
+      .filter(([uid, p]) => p.bday === today && uid !== me.uid && dir[uid] && (!mc || dir[uid].cls === mc))
+      .map(([uid]) => dir[uid].name);
+    const mine = profs[me.uid] && profs[me.uid].bday === today;
+    const box = $("#bday");
+    box.textContent = mine ? `🎉 З днем народження, ${profile.name}! Увесь портал вітає тебе!`
+      : names.length ? `🎂 Сьогодні день народження: ${names.join(", ")}! Привітай у чаті класу` : "";
+    box.hidden = !box.textContent;
+  }
+
+  /* ===== Реакції, опитування, скарги ===== */
+  const REACTS = ["👍", "😂", "❤️", "🔥", "😮"];
+  function nameEl(uid, name, mine) {
+    const p = profs[uid] || {};
+    const b = el("b", null, (p.emoji ? p.emoji + " " : "") + (mine ? "Ти" : name));
+    if (COLORS[p.color]) b.style.color = COLORS[p.color];
+    return b;
+  }
+  function react(d, r, e) {
+    updateDoc(d.ref, { [`r.${me.uid}`]: r[me.uid] === e ? deleteField() : e }).catch(err => { console.error(err); toast("Не вдалося"); });
+  }
+  function renderReacts(d, m) {
+    const row = el("div", "reacts"), r = m.r || {}, counts = {};
+    Object.values(r).forEach(e => { counts[e] = (counts[e] || 0) + 1; });
+    REACTS.filter(e => counts[e]).forEach(e => {
+      const b = el("button", "react" + (r[me.uid] === e ? " on" : ""), `${e} ${counts[e]}`); b.type = "button";
+      b.addEventListener("click", () => react(d, r, e)); row.append(b);
+    });
+    const add = el("button", "react add", "＋"); add.type = "button"; add.title = "Реакція"; add.setAttribute("aria-label", "Додати реакцію");
+    add.addEventListener("click", () => {
+      const old = row.querySelector(".pick"); if (old) { old.remove(); return; }
+      const p = el("span", "pick");
+      REACTS.forEach(e => { const b = el("button", "react", e); b.type = "button"; b.addEventListener("click", () => react(d, r, e)); p.append(b); });
+      row.append(p);
+    });
+    row.append(add);
+    return row;
+  }
+  function renderPoll(d, m) {
+    const box = el("div", "poll"); box.append(el("b", null, "📊 " + m.text));
+    const votes = m.votes || {}, total = Object.keys(votes).length, mine = votes[me.uid];
+    m.opts.forEach((o, i) => {
+      const n = Object.values(votes).filter(v => v === i).length, pct = total ? Math.round(n / total * 100) : 0;
+      const b = el("button", "opt" + (mine === i ? " mine" : "")); b.type = "button";
+      const fill = el("span", "fill"); fill.style.width = pct + "%";
+      b.append(fill, el("span", null, (mine === i ? "✓ " : "") + o), el("span", "pct", total ? `${pct}% · ${n}` : ""));
+      b.addEventListener("click", () => updateDoc(d.ref, { [`votes.${me.uid}`]: mine === i ? deleteField() : i }).catch(e => { console.error(e); toast("Не вдалося проголосувати"); }));
+      box.append(b);
+    });
+    box.append(el("small", "muted", `Голосів: ${total}`));
+    return box;
+  }
+  async function report(d, m) {
+    try {
+      await addDoc(collection(db, "reports"), { path: d.ref.path, text: String(m.text || "").slice(0, 500), author: m.uid, authorName: m.name, by: me.uid, byName: profile.name, status: "open", createdAt: serverTimestamp() });
+      toast("Скаргу надіслано модераторам");
+    } catch (e) { console.error(e); toast("Не вдалося надіслати скаргу"); }
+  }
   function renderMessages(docs, kind) {
+    lastDocs = docs; lastKind = kind;
     const box = $("#messages");
     const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 120;
     box.replaceChildren();
@@ -502,18 +626,241 @@ function start() {
       const day = fmtDay(when);
       if (day && day !== lastDay) { box.append(el("div", "day-sep", day)); lastDay = day; }
       const mine = m.uid === me.uid;
-      const wrap = el("div", "msg" + (mine ? " mine" : ""));
+      const wrap = el("div", "msg" + (mine ? " mine" : "") + (m.opts ? " is-poll" : ""));
       const meta = el("div", "meta");
-      meta.append(el("b", null, mine ? "Ти" : m.name));
+      meta.append(nameEl(m.uid, m.name, mine));
       if (kind === "group" && !mine && dir[m.uid] && dir[m.uid].cls) meta.append(el("span", null, `${dir[m.uid].cls} клас`));
       if (m.role && m.role !== "student") meta.append(el("span", null, ROLE[m.role]));
       meta.append(el("span", null, fmtTime(when)));
-      if (mine || isAdmin || (isMod && kind === "class")) meta.append(confirmButton("видалити", "del", () => deleteDoc(d.ref)));
-      wrap.append(meta, el("div", "txt", m.text));
+      if (!mine) meta.append(confirmButton("поскаржитися", "del", () => report(d, m)));
+      if (mine || isAdmin || (isMod && kind === "class")) meta.append(confirmButton("видалити", "del", async () => {
+        await deleteDoc(d.ref);
+        if (!mine) logAction("Видалив повідомлення", m.uid, m.name);
+      }));
+      wrap.append(meta, m.opts ? renderPoll(d, m) : el("div", "txt", m.text), renderReacts(d, m));
       box.append(wrap);
     });
     if (nearBottom) box.scrollTop = box.scrollHeight;
   }
+
+  /* ----- Створення опитування ----- */
+  function pollOptInput(v = "") {
+    const i = el("input"); i.maxLength = 60; i.placeholder = "Варіант"; i.value = v; i.className = "poll-opt";
+    i.setAttribute("aria-label", "Варіант відповіді");
+    return i;
+  }
+  $("#b-poll").addEventListener("click", () => {
+    const f = $("#f-poll"); formErr(f); f.hidden = false;
+    $("#poll-q").value = ""; $("#poll-opts").replaceChildren(pollOptInput(), pollOptInput());
+    $("#poll-q").focus();
+  });
+  $("#poll-add").addEventListener("click", () => { if ($$("#poll-opts input").length < 6) $("#poll-opts").append(pollOptInput()); });
+  $("#poll-cancel").addEventListener("click", () => { $("#f-poll").hidden = true; });
+  $("#f-poll").addEventListener("submit", async e => {
+    e.preventDefault(); const f = e.target; formErr(f);
+    const q = $("#poll-q").value.trim(), opts = $$("#poll-opts input").map(i => i.value.trim()).filter(Boolean);
+    if (q.length < 2) { formErr(f, "Напиши питання."); return; }
+    if (opts.length < 2) { formErr(f, "Потрібно щонайменше 2 варіанти."); return; }
+    if (!current) return;
+    const col = current.kind === "class" ? collection(db, "classes", String(current.cls), "messages") : collection(db, "groups", current.id, "messages");
+    try {
+      await addDoc(col, { uid: me.uid, name: profile.name, role: profile.role, text: q.slice(0, 200), opts: opts.slice(0, 6), createdAt: serverTimestamp() });
+      f.hidden = true; scrollChat(true);
+    } catch (ex) { console.error(ex); formErr(f, isMutedNow() ? "Ти в муті — зараз не можна писати." : "Не вдалося опублікувати."); }
+  });
+
+  /* ===== Мут ===== */
+  let myMute = null, mutes = {};
+  const isMutedNow = () => !!myMute && myMute > new Date();
+  function setupMyMute() {
+    portalSubs.push(onSnapshot(doc(db, "mutes", me.uid), s => { myMute = s.exists() ? toDate(s.data().until) : null; applyMute(); }, () => {}));
+    const t = setInterval(applyMute, 30000);
+    portalSubs.push(() => { clearInterval(t); myMute = null; });
+  }
+  function applyMute() {
+    const until = isMutedNow() ? `${fmtTime(myMute)}${myMute.toDateString() !== new Date().toDateString() ? " " + fmtDay(myMute) : ""}` : "";
+    $("#f-news button[type=submit]").disabled = !!until;
+    $("#b-poll").disabled = !!until;
+    if (!current) return;
+    if (until) { setComposer(false, `Ти в муті до ${until}`); return; }
+    if (current.kind === "class") setComposer(canWriteClass(current.cls), "Тут можна лише читати — писати можна в чат свого класу");
+    else setComposer(true);
+  }
+  const MUTE_OPTS = [["", "Мут…"], ["10", "10 хв"], ["60", "1 год"], ["1440", "1 день"], ["10080", "7 днів"]];
+  function muteControl(m) {
+    const until = mutes[m.id];
+    if (until && until > new Date()) {
+      const b = el("button", "btn ghost sm", `Зняти мут (до ${fmtTime(until)})`); b.type = "button";
+      b.addEventListener("click", async () => {
+        b.disabled = true;
+        try { await deleteDoc(doc(db, "mutes", m.id)); logAction("Зняв мут", m.id, m.p.name); toast(`${m.p.name}: мут знято`); }
+        catch (e) { console.error(e); toast("Не вдалося"); b.disabled = false; }
+      });
+      return b;
+    }
+    const sel = el("select", "mute-sel"); sel.innerHTML = MUTE_OPTS.map(([v, t]) => `<option value="${v}">${t}</option>`).join("");
+    sel.setAttribute("aria-label", `Мут: ${m.p.name}`);
+    sel.addEventListener("change", async () => {
+      const min = Number(sel.value); if (!min) return;
+      sel.disabled = true;
+      try {
+        await setDoc(doc(db, "mutes", m.id), { until: Timestamp.fromDate(new Date(Date.now() + min * 60000)), by: me.uid, at: serverTimestamp() });
+        logAction(`Замутив на ${sel.options[sel.selectedIndex].text}`, m.id, m.p.name);
+        toast(`${m.p.name}: мут на ${sel.options[sel.selectedIndex].text}`);
+      } catch (e) { console.error(e); toast("Не вдалося замутити"); sel.disabled = false; sel.value = ""; }
+    });
+    return sel;
+  }
+
+  /* ===== Скарги (адмін і модератори) ===== */
+  let reports = [];
+  function setupReports() {
+    portalSubs.push(onSnapshot(query(collection(db, "reports"), where("status", "==", "open"), limit(100)),
+      s => { reports = s.docs; renderReports(); }, e => console.error(e)));
+    portalSubs.push(onSnapshot(collection(db, "mutes"),
+      s => { mutes = {}; s.docs.forEach(d => { mutes[d.id] = toDate(d.data().until); }); renderModeration(); }, e => console.error(e)));
+  }
+  function renderReports() {
+    const n = reports.length, b = $("#report-count");
+    b.textContent = n; b.hidden = !n; $("#reports-count").textContent = n;
+    const box = $("#reports"); box.replaceChildren();
+    if (!n) { box.append(emptyEl("Скарг немає 👍")); return; }
+    reports.forEach(d => {
+      const r = d.data({ serverTimestamps: "estimate" });
+      const place = r.path.startsWith("classes/") ? `чат ${r.path.split("/")[1]} класу` : "окремий чат";
+      const card = el("article", "post");
+      const top = el("div", "top-line"); top.append(el("h3", null, `Скарга на: ${r.authorName}`), pill(place, "warn"));
+      const acts = el("div", "acts");
+      const done = async (action) => { await updateDoc(d.ref, { status: "done" }); logAction(action, r.author, r.authorName); };
+      if (isAdmin || r.path.startsWith("classes/")) acts.append(confirmButton("Видалити повідомлення", "btn badb sm", async () => {
+        await deleteDoc(doc(db, r.path)).catch(e => console.error(e));
+        await done("Видалив повідомлення за скаргою"); toast("Повідомлення видалено");
+      }));
+      const keep = el("button", "btn ghost sm", "Залишити"); keep.type = "button";
+      keep.addEventListener("click", async () => { keep.disabled = true; try { await done("Відхилив скаргу"); toast("Скаргу закрито"); } catch (e) { console.error(e); keep.disabled = false; } });
+      acts.append(keep);
+      card.append(top, el("p", "txt", `«${r.text}»`), el("span", "by", `Від: ${r.byName} · ${fmtDay(toDate(r.createdAt))} ${fmtTime(toDate(r.createdAt))}`), acts);
+      box.append(card);
+    });
+  }
+
+  /* ===== Журнал дій ===== */
+  function logAction(action, target, targetName) {
+    if (!(isAdmin || isMod) || !profile) return;
+    addDoc(collection(db, "log"), { action: String(action).slice(0, 120), target: target || "", targetName: String(targetName || "").slice(0, 80), by: me.uid, byName: profile.name, at: serverTimestamp() }).catch(console.error);
+  }
+  function setupLog() {
+    $("#log-box").hidden = !isOwner;
+    if (!isOwner) return;
+    portalSubs.push(onSnapshot(query(collection(db, "log"), orderBy("at", "desc"), limit(100)), s => {
+      const box = $("#log"); box.replaceChildren();
+      if (!s.size) { box.append(emptyEl("Поки що порожньо.")); return; }
+      s.docs.forEach(d => {
+        const l = d.data({ serverTimestamps: "estimate" }), t = toDate(l.at);
+        const row = el("div"); const tm = el("time", null, `${fmtDay(t)} ${fmtTime(t)}`);
+        row.append(tm, `${l.byName}: ${l.action}${l.targetName ? " — " + l.targetName : ""}`);
+        box.append(row);
+      });
+    }, e => console.error(e)));
+  }
+
+  /* ===== Непрочитані повідомлення ===== */
+  let watch = {}, unread = {}, soundOn = store.get("msgSound", true);
+  $("#msg-sound").checked = soundOn;
+  $("#msg-sound").addEventListener("change", e => { soundOn = e.target.checked; store.set("msgSound", soundOn); });
+  const lrKey = k => `lr.${me ? me.uid : ""}.${k}`;
+  const curKey = () => current ? (current.kind === "class" ? "c" + current.cls : "g" + current.id) : null;
+  const isViewing = k => k === curKey() && !$("#p-chat").hidden && $("#f-group").hidden && document.visibilityState === "visible";
+  function markRead(k) {
+    if (!k) return;
+    store.set(lrKey(k), Date.now());
+    if (unread[k]) { unread[k] = 0; renderUnread(); }
+  }
+  function setupUnread() {
+    const onVis = () => { if (document.visibilityState === "visible") markRead(curKey()); };
+    document.addEventListener("visibilitychange", onVis);
+    portalSubs.push(() => {
+      document.removeEventListener("visibilitychange", onVis);
+      Object.values(watch).forEach(u => u()); watch = {}; unread = {};
+      document.title = "Підпільний портал учнів";
+    });
+  }
+  function syncWatchers() {
+    if (!inPortal || !me) return;
+    const want = {}, mc = myClass();
+    if (mc) want["c" + mc] = collection(db, "classes", String(mc), "messages");
+    groups.filter(g => g.status === "approved" && g.members.includes(me.uid)).forEach(g => { want["g" + g.id] = collection(db, "groups", g.id, "messages"); });
+    Object.keys(watch).forEach(k => { if (!want[k]) { watch[k](); delete watch[k]; delete unread[k]; } });
+    Object.entries(want).forEach(([k, col]) => {
+      if (watch[k]) return;
+      let first = true;
+      watch[k] = onSnapshot(query(col, orderBy("createdAt", "desc"), limit(50)), s => {
+        if (isViewing(k)) { markRead(k); first = false; return; }
+        const lr = store.get(lrKey(k), 0);
+        const n = s.docs.filter(d => { const m = d.data({ serverTimestamps: "estimate" }), t = toDate(m.createdAt); return m.uid !== me.uid && t && t.getTime() > lr; }).length;
+        const grew = !first && n > (unread[k] || 0);
+        unread[k] = n; first = false; renderUnread();
+        if (grew) ping();
+      }, e => console.error(e));
+    });
+    renderUnread();
+  }
+  function renderUnread() {
+    const total = Object.values(unread).reduce((a, b) => a + b, 0);
+    const b = $("#chat-unread"); b.textContent = total > 99 ? "99+" : String(total); b.hidden = !total;
+    document.title = (total ? `(${total}) ` : "") + "Підпільний портал учнів";
+    renderSwitch();
+  }
+  function addBadge(chip, k) { const n = unread[k]; if (n) chip.append(el("span", "badge", n > 99 ? "99+" : String(n))); }
+  function ping() {
+    if (!soundOn) return;
+    try {
+      const ac = ping.ac = ping.ac || new (window.AudioContext || window.webkitAudioContext)();
+      const o = ac.createOscillator(), g = ac.createGain(); o.frequency.value = 880; o.type = "sine";
+      o.connect(g); g.connect(ac.destination); g.gain.setValueAtTime(.12, ac.currentTime); g.gain.exponentialRampToValueAtTime(.001, ac.currentTime + .25);
+      o.start(); o.stop(ac.currentTime + .3);
+    } catch {}
+  }
+
+  /* ===== Тест дня ===== */
+  let quizUnsub = null;
+  const isoDay = d => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  async function setupQuiz() {
+    quizUnsub && quizUnsub();
+    const mc = myClass() || 6, qs = QUIZ[mc] || QUIZ[6], now = new Date(), day = isoDay(now), month = day.slice(0, 7);
+    const doy = Math.floor((now - new Date(now.getFullYear(), 0, 0)) / 86400000);
+    const q = qs[doy % qs.length], ref = doc(db, "quiz", `${day}_${me.uid}`);
+    $("#qz-cls").textContent = `Тест дня · ${mc} клас`;
+    $("#qz-q").textContent = q.q;
+    const show = ans => {
+      const box = $("#qz-opts"); box.replaceChildren();
+      q.o.forEach((o, i) => {
+        const b = el("button", "btn ghost", o); b.type = "button";
+        if (ans != null) { b.disabled = true; if (i === q.a) b.classList.add("okb"); else if (i === ans) b.classList.add("badb"); }
+        b.addEventListener("click", async () => {
+          $$("#qz-opts button").forEach(x => { x.disabled = true; });
+          try {
+            await setDoc(ref, { uid: me.uid, name: profile.name, cls: mc, day, month, ok: i === q.a, at: serverTimestamp() });
+            show(i);
+          } catch (e) { console.error(e); toast("Не вдалося зберегти відповідь"); show(null); }
+        });
+        box.append(b);
+      });
+      $("#qz-msg").textContent = ans == null ? "Одна спроба на день." : ans === q.a ? "Правильно! +1 до рейтингу 🏆" : `Не вгадав. Правильна відповідь: ${q.o[q.a]}. Завтра — нове питання!`;
+    };
+    show(null);
+    try { const s = await getDoc(ref); if (s.exists()) show(s.data().ok ? q.a : (q.a + 1) % q.o.length); } catch (e) { console.error(e); }
+    quizUnsub = onSnapshot(query(collection(db, "quiz"), where("month", "==", month), limit(1000)), s => {
+      const score = {};
+      s.docs.forEach(d => { const r = d.data(); if (r.cls === mc && r.ok) { score[r.uid] = score[r.uid] || { name: r.name, n: 0 }; score[r.uid].n++; } });
+      const top = Object.entries(score).sort((a, b) => b[1].n - a[1].n).slice(0, 10);
+      const ol = $("#qz-top"); ol.replaceChildren();
+      if (!top.length) { ol.append(el("li", "muted", "Ще ніхто не відповів правильно цього місяця.")); return; }
+      top.forEach(([uid, v]) => { const li = el("li"); li.append(nameEl(uid, v.name, uid === me.uid), ` — ${v.n}`); ol.append(li); });
+    }, e => console.error(e));
+    if (!setupQuiz.cleanup) { setupQuiz.cleanup = true; portalSubs.push(() => { quizUnsub && quizUnsub(); quizUnsub = null; setupQuiz.cleanup = false; }); }
+  }
+
   $("#f-chat").addEventListener("submit", async e => {
     e.preventDefault();
     const input = $("#chat-text"), text = input.value.trim();
@@ -648,7 +995,7 @@ function start() {
       const right = el("span"); right.append(`${fmtDay(toDate(n.createdAt))} ${fmtTime(toDate(n.createdAt))}`);
       by.append(author, right);
       card.append(top, el("p", "txt", n.text), by);
-      if (n.uid === me.uid || isAdmin || isMod) { const a = el("div", "acts"); a.append(confirmButton("Видалити", "btn ghost sm", () => deleteDoc(d.ref))); card.append(a); }
+      if (n.uid === me.uid || isAdmin || isMod) { const a = el("div", "acts"); a.append(confirmButton("Видалити", "btn ghost sm", async () => { await deleteDoc(d.ref); if (n.uid !== me.uid) logAction("Видалив оголошення", n.uid, n.name); })); card.append(a); }
       box.append(card);
     });
   }
@@ -741,11 +1088,11 @@ function start() {
       top.append(el("h3", null, `${ROLE[p.role] || ""} · ${p.name}`), pill(st, sc));
       const dl = el("dl", "details"); fillDetails(dl, p);
       const acts = el("div", "acts");
-      const set = status => async () => { await updateDoc(d.ref, { status, reviewedAt: serverTimestamp() }); toast({ approved: "Заявку схвалено", kicked: `${p.name}: кікнуто`, rejected: "Заявку відхилено" }[status]); };
+      const set = status => async () => { await updateDoc(d.ref, { status, reviewedAt: serverTimestamp() }); toast({ approved: "Заявку схвалено", kicked: `${p.name}: кікнуто`, rejected: "Заявку відхилено" }[status]); logAction({ approved: p.status === "kicked" ? "Повернув після кіку" : "Схвалив заявку", kicked: "Кікнув", rejected: "Відхилив заявку" }[status], d.id, p.name); };
       if (p.status !== "approved") { const b = el("button", "btn okb sm", p.status === "kicked" ? "Повернути" : "Схвалити"); b.type = "button"; b.addEventListener("click", async () => { b.disabled = true; try { await set("approved")(); } catch (ex) { console.error(ex); toast("Не вдалося"); b.disabled = false; } }); acts.append(b); }
       if (p.status === "approved" && d.id !== me.uid) acts.append(confirmButton("Кікнути", "btn badb sm", set("kicked")));
       if (p.status === "pending") acts.append(confirmButton("Відхилити", "btn badb sm", set("rejected")));
-      if (d.id !== me.uid) acts.append(confirmButton("Видалити", "btn ghost sm", async () => { await deleteDoc(d.ref); toast("Заявку видалено"); }));
+      if (d.id !== me.uid) acts.append(confirmButton("Видалити", "btn ghost sm", async () => { await deleteDoc(d.ref); toast("Заявку видалено"); logAction("Видалив заявку", d.id, p.name); }));
       card.append(top, el("span", "by", `Подано ${fmtDay(toDate(p.createdAt))} ${fmtTime(toDate(p.createdAt))}`), dl, acts);
       box.append(card);
     });
@@ -823,7 +1170,7 @@ function start() {
       const a = el("a", null, b.title); a.href = b.url; a.target = "_blank"; a.rel = "noopener";
       const info = el("div"); info.append(a, el("small", null, [b.subject, b.author, b.cls ? `${b.cls} клас` : "усі класи"].filter(Boolean).join(" · ")));
       card.append(el("span", "ic", "📘"), info);
-      if (canAddBooks()) card.append(confirmButton("Видалити", "btn ghost sm", () => deleteDoc(d.ref)));
+      if (canAddBooks()) card.append(confirmButton("Видалити", "btn ghost sm", async () => { await deleteDoc(d.ref); logAction("Видалив книгу", "", b.title); }));
       else card.append(el("span"));
       box.append(card);
     });
@@ -1020,8 +1367,8 @@ function start() {
       lines.forEach(l => c.append(el("p", "small", l)));
       const acts = el("div", "acts");
       const ok = el("button", "btn okb sm", "Схвалити"); ok.type = "button";
-      ok.addEventListener("click", async () => { ok.disabled = true; try { await updateDoc(g.ref, approve); toast("Схвалено"); } catch (e) { console.error(e); toast("Не вдалося"); ok.disabled = false; } });
-      acts.append(ok, confirmButton("Відхилити", "btn badb sm", async () => { await updateDoc(g.ref, reject); toast("Відхилено"); }));
+      ok.addEventListener("click", async () => { ok.disabled = true; try { await updateDoc(g.ref, approve); toast("Схвалено"); logAction(`Схвалив: ${title}`, g.owner, dir[g.owner] ? dir[g.owner].name : ""); } catch (e) { console.error(e); toast("Не вдалося"); ok.disabled = false; } });
+      acts.append(ok, confirmButton("Відхилити", "btn badb sm", async () => { await updateDoc(g.ref, reject); toast("Відхилено"); logAction(`Відхилив: ${title}`, g.owner, dir[g.owner] ? dir[g.owner].name : ""); }));
       c.append(acts); box.append(c);
     };
     pend.forEach(g => card(g, `Новий чат «${g.name}»`, [`Створив: ${who([g.owner])}`, `Запрошує: ${who(g.invited || [])}`],
@@ -1041,7 +1388,7 @@ function start() {
       e => console.error(e)));
     const tick = setInterval(renderModeration, 60 * 1000);
     portalSubs.push(() => clearInterval(tick));
-    $("#mod-head").innerHTML = `<th>Ім'я</th><th>Клас</th><th>Заходив</th>${isAdmin ? "<th>Дії</th>" : ""}`;
+    $("#mod-head").innerHTML = `<th>Ім'я</th><th>Клас</th><th>Заходив</th>${isAdmin || isMod ? "<th>Дії</th>" : ""}`;
     $("#maint-box").hidden = !isAdmin; renderMaintBox();
     $("#mod-note").textContent = isOwner
       ? "Клас змінюється одразу: у людини відкриються чат і оголошення нового класу. Молодші модератори можуть видаляти повідомлення й оголошення та читати чати всіх класів, але не схвалюють заявки й не змінюють класи."
@@ -1072,7 +1419,7 @@ function start() {
       .filter(m => modClass === "all" || String(m.p.cls) === modClass)
       .filter(m => !q || m.p.name.toLowerCase().includes(q))
       .sort((a, b) => (seen[b.id] || 0) - (seen[a.id] || 0));
-    const cols = isAdmin ? 4 : 3;
+    const cols = isAdmin || isMod ? 4 : 3;
     const body = $("#mod-rows"); body.replaceChildren();
     if (!list.length) { const tr = el("tr"); const td = el("td", "muted", "Нікого не знайдено."); td.colSpan = cols; tr.append(td); body.append(tr); return; }
     list.forEach(m => {
@@ -1086,7 +1433,7 @@ function start() {
         sel.addEventListener("change", async () => {
           const n = Number(sel.value), field = m.p.role === "parent" ? "childClass" : "cls";
           sel.disabled = true;
-          try { await updateDoc(doc(db, "users", m.id), { [field]: n }); toast(`${m.p.name}: тепер ${n} клас`); }
+          try { await updateDoc(doc(db, "users", m.id), { [field]: n }); toast(`${m.p.name}: тепер ${n} клас`); logAction(`Змінив клас на ${n}`, m.id, m.p.name); }
           catch (e) { console.error(e); toast("Не вдалося змінити клас"); sel.value = String(m.p.cls); }
           finally { sel.disabled = false; }
         });
@@ -1094,11 +1441,12 @@ function start() {
       } else clsTd.append(el("span", m.p.cls ? null : "muted", m.p.cls ? `${m.p.cls} клас` : "—"));
       const [txt, cls] = seenText(seen[m.id]);
       tr.append(name, clsTd, el("td", "seen " + cls, txt));
-      if (isAdmin) {
+      if (isAdmin || isMod) {
         const td = el("td"); td.className = "acts";
-        if (m.id !== me.uid && m.id !== ownerUid) td.append(confirmButton("Кікнути", "btn badb sm", async () => {
+        if (m.id !== me.uid && m.id !== ownerUid && !mods.has(m.id)) td.append(muteControl(m));
+        if (isAdmin && m.id !== me.uid && m.id !== ownerUid) td.append(confirmButton("Кікнути", "btn badb sm", async () => {
           await updateDoc(doc(db, "users", m.id), { status: "kicked", reviewedAt: serverTimestamp() });
-          toast(`${m.p.name}: кікнуто`);
+          toast(`${m.p.name}: кікнуто`); logAction("Кікнув", m.id, m.p.name);
         }));
         if (isOwner && m.id !== me.uid) {
           const isM = mods.has(m.id);
@@ -1108,6 +1456,7 @@ function start() {
             try {
               if (isM) await deleteDoc(doc(db, "mods", m.id)); else await setDoc(doc(db, "mods", m.id), { createdAt: serverTimestamp() });
               toast(isM ? `${m.p.name} більше не модератор` : `${m.p.name} — молодший модератор`);
+              logAction(isM ? "Зняв модератора" : "Призначив модератором", m.id, m.p.name);
             } catch (e) { console.error(e); toast("Не вдалося"); b.disabled = false; }
           });
           td.append(b);
