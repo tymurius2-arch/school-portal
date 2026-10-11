@@ -196,12 +196,12 @@ function start() {
   onAuthStateChanged(auth, async user => {
     stopAll(); me = user; profile = undefined; isAdmin = false; editing = false;
     if (!user) { show("auth"); return; }
-    show("loading");
+    show("loading"); watchLoading();
     await checkAdmin(user);
     if (me !== user) return;
     sessionSubs.push(onSnapshot(doc(db, "users", user.uid),
       s => { profile = s.exists() ? s.data({ serverTimestamps: "estimate" }) : null; route(); },
-      e => { console.error(e); toast("Немає зв'язку з сервером. Онови сторінку."); }));
+      e => { console.error(e); showError(e); }));
     // Призначення чи зняття модератора застосовується одразу.
     sessionSubs.push(onSnapshot(doc(db, "mods", user.uid), s => {
       const v = !isAdmin && s.exists();
@@ -236,8 +236,24 @@ function start() {
     await checkAdmin(me); b.disabled = false; route();
   }));
 
+  // Замість нескінченного «Завантаження…» — зрозуміла помилка з підказкою.
+  function showError(e) {
+    const code = (e && e.code) || "";
+    $("#err-text").textContent = code === "permission-denied"
+      ? "База даних не пускає. Адміністратору: відкрий Firebase → Firestore Database → Rules, встав правила з файлу firestore.rules і натисни Publish."
+      : code === "unavailable" || code === "failed-precondition"
+        ? "Немає зв'язку з базою даних. Перевір інтернет. Якщо інтернет є — адміністратору варто перевірити, що в Firebase створено Firestore Database."
+        : "Щось пішло не так. Спробуй оновити сторінку.";
+    $("#err-code").textContent = code ? `Код помилки: ${code}` : "";
+    show("error");
+  }
+  // Якщо за 20 секунд нічого не завантажилось — теж показуємо помилку.
+  let loadTimer = null;
+  const watchLoading = () => { clearTimeout(loadTimer); loadTimer = setTimeout(() => { if (!$("#s-loading").hidden) showError({ code: "unavailable" }); }, 20000); };
+
   function route() {
     if (registering || !me || profile === undefined) return;
+    clearTimeout(loadTimer);
     if (profile && (isAdmin || profile.status === "approved")) { enterPortal(); return; }
     if (inPortal) { stopPortal(); if (profile) toast("Доступ до порталу закрито адміністратором"); }
     if (!profile) { openApply(null, null); return; }

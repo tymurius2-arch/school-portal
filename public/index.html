@@ -20,6 +20,18 @@
 </main>
 
 <!-- Сайт не налаштовано -->
+<main class="screen center" id="s-error" hidden>
+  <div class="card narrow stack">
+    <h1>Не вдалося завантажити портал</h1>
+    <p id="err-text"></p>
+    <p class="muted small" id="err-code"></p>
+    <div class="row">
+      <button class="btn" type="button" onclick="location.reload()">Спробувати ще раз</button>
+      <button class="btn ghost" type="button" data-logout>Вийти</button>
+    </div>
+  </div>
+</main>
+
 <main class="screen center" id="s-setup" hidden>
   <div class="card narrow stack">
     <h1>Портал ще не підключено</h1>
