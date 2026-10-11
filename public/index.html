@@ -101,7 +101,6 @@
         <div><b>Підпільний портал <span class="stamp sm">учні only</span></b><small class="muted" id="who"></small></div>
       </div>
       <span class="status" id="lesson" aria-live="polite"></span>
-      <button class="icon-btn" type="button" id="b-theme" aria-label="Змінити тему">☀️</button>
       <button class="btn ghost sm" type="button" data-logout>Вийти</button>
     </div>
     <nav class="tabs" role="tablist" aria-label="Розділи">
@@ -110,6 +109,7 @@
       <button class="tab" role="tab" data-tab="schedule">Розклад</button>
       <button class="tab" role="tab" data-tab="hints">Підказки</button>
       <button class="tab" role="tab" data-tab="tools">☰ Корисне</button>
+      <button class="tab" role="tab" data-tab="settings">⚙ Налаштування</button>
       <button class="tab" role="tab" data-tab="admin" hidden>Заявки <span class="badge" id="pending-count" hidden></span></button>
       <button class="tab" role="tab" data-tab="mod" hidden>Модерація</button>
     </nav>
@@ -274,6 +274,20 @@
           </ul>
         </article>
       </div>
+    </section>
+
+    <!-- Налаштування -->
+    <section class="panel" id="p-settings" role="tabpanel" hidden>
+      <div class="head"><h2>Налаштування</h2></div>
+      <div class="card stack">
+        <h3>Тема</h3>
+        <div class="skins" id="skins"></div>
+      </div>
+      <div class="card stack">
+        <h3>Розмір тексту</h3>
+        <div class="chips" id="sizes"></div>
+      </div>
+      <p class="muted small">Налаштування зберігаються на цьому пристрої.</p>
     </section>
 
     <!-- Модерація (адміністратор і молодші модератори) -->
