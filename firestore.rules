@@ -173,6 +173,24 @@ service cloud.firestore {
       }
     }
 
+    // Бібліотека: посилання на книги. Додають адміністратор і модератори.
+    match /books/{id} {
+      allow read: if isAdmin() || approved();
+      allow create: if (isAdmin() || isMod()) && hasProfile()
+        && request.resource.data.keys().hasOnly(['title', 'author', 'subject', 'cls', 'url', 'uid', 'name', 'createdAt'])
+        && shortText(request.resource.data.title, 2, 120)
+        && (!('author' in request.resource.data) || shortText(request.resource.data.author, 0, 80))
+        && shortText(request.resource.data.subject, 2, 40)
+        && request.resource.data.cls is int && request.resource.data.cls >= 0 && request.resource.data.cls <= 9
+        && request.resource.data.url is string && request.resource.data.url.size() <= 500
+        && request.resource.data.url.matches('https://[^ ]+')
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.name == me().name
+        && request.resource.data.createdAt == request.time;
+      allow update: if false;
+      allow delete: if isAdmin() || isMod();
+    }
+
     // Оголошення: cls = 0 — для всієї школи, 1–9 — для класу.
     match /announcements/{id} {
       allow read: if isAdmin() || approved();

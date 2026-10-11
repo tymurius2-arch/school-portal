@@ -207,6 +207,15 @@ textarea{resize:vertical; min-height:80px}
 .links{margin:0; padding-left:18px; display:grid; gap:6px}
 .links a{color:var(--violet); font-weight:600}
 
+/* Бібліотека */
+.book{display:grid; grid-template-columns:44px 1fr auto; gap:12px; align-items:center}
+.book .ic{width:44px; height:52px; border-radius:6px 10px 10px 6px; display:grid; place-items:center; font-size:1.2rem; background:linear-gradient(135deg,var(--violet),var(--accent))}
+.book a{color:var(--fg); font-weight:700; text-decoration:none}
+.book a:hover{text-decoration:underline}
+.book small{display:block; color:var(--muted)}
+.res{display:grid; gap:8px}
+.res .btn{justify-self:start; text-decoration:none}
+
 /* Налаштування */
 .skins{display:grid; gap:12px; grid-template-columns:repeat(auto-fill,minmax(min(100%,180px),1fr))}
 .skin{display:grid; gap:10px; text-align:left; padding:14px; border-radius:14px; border:2px solid var(--line); cursor:pointer; color:#fff; font:inherit}
