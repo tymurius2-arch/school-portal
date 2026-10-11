@@ -109,6 +109,7 @@
       <button class="tab" role="tab" data-tab="news">Оголошення</button>
       <button class="tab" role="tab" data-tab="schedule">Розклад</button>
       <button class="tab" role="tab" data-tab="hints">Підказки</button>
+      <button class="tab" role="tab" data-tab="tools">☰ Корисне</button>
       <button class="tab" role="tab" data-tab="admin" hidden>Заявки <span class="badge" id="pending-count" hidden></span></button>
       <button class="tab" role="tab" data-tab="mod" hidden>Модерація</button>
     </nav>
@@ -182,6 +183,97 @@
       <div class="chips" id="hints-class"></div>
       <div class="hint-grid" id="hints-list"></div>
       <p class="muted small">Це короткі шпаргалки. Якщо щось не збігається з підручником — вір підручнику.</p>
+    </section>
+
+    <!-- Корисне -->
+    <section class="panel" id="p-tools" role="tabpanel" hidden>
+      <div class="head"><h2>Корисне</h2></div>
+      <div class="tools">
+
+        <article class="card stack tool" id="t-telegram" hidden>
+          <span class="eyebrow">Домашка</span>
+          <h3>Чат класу в Telegram</h3>
+          <p class="muted small">Там пишуть домашнє завдання.</p>
+          <a class="btn" id="tg-link" href="#" target="_blank" rel="noopener">📚 Відкрити в Telegram</a>
+        </article>
+
+        <article class="card stack tool">
+          <span class="eyebrow">Оцінки</span>
+          <h3>Що треба отримати?</h3>
+          <label for="gc-grades">Мої оцінки (через кому)<input id="gc-grades" inputmode="numeric" placeholder="9, 10, 8, 11"></label>
+          <div class="row">
+            <label for="gc-target">Хочу за семестр<select id="gc-target"></select></label>
+            <label for="gc-left">Ще буде оцінок<select id="gc-left"><option>1</option><option>2</option><option>3</option></select></label>
+          </div>
+          <div class="result" id="gc-result" aria-live="polite"></div>
+          <p class="muted small">12-бальна система, середнє округлюється: 9,5 → 10.</p>
+        </article>
+
+        <article class="card stack tool">
+          <span class="eyebrow">Канікули</span>
+          <h3 id="br-name">До канікул</h3>
+          <div class="count">
+            <div><b id="br-d">0</b><span>днів</span></div>
+            <div><b id="br-h">0</b><span>год</span></div>
+            <div><b id="br-m">0</b><span>хв</span></div>
+          </div>
+          <p class="muted small" id="br-dates"></p>
+        </article>
+
+        <article class="card stack tool">
+          <span class="eyebrow">Домашка без відволікань</span>
+          <h3 id="pm-mode">Робота · 25 хв</h3>
+          <div class="timer" id="pm-time" aria-live="polite">25:00</div>
+          <div class="row">
+            <button class="btn" type="button" id="pm-start">Старт</button>
+            <button class="btn ghost" type="button" id="pm-reset">Скинути</button>
+          </div>
+          <p class="muted small">25 хвилин працюєш, 5 відпочиваєш. Наприкінці — сигнал.</p>
+        </article>
+
+        <article class="card stack tool">
+          <span class="eyebrow">Перетворювач одиниць</span>
+          <h3>Скільки це?</h3>
+          <div class="chips" id="cv-kind"></div>
+          <div class="row">
+            <label for="cv-val">Число<input id="cv-val" inputmode="decimal" value="1"></label>
+            <label for="cv-from">З<select id="cv-from"></select></label>
+            <label for="cv-to">У<select id="cv-to"></select></label>
+          </div>
+          <div class="result" id="cv-result" aria-live="polite"></div>
+        </article>
+
+        <article class="card stack tool">
+          <span class="eyebrow">Для уроку</span>
+          <h3>Хто відповідає?</h3>
+          <div class="pick-name" id="rp-name" aria-live="polite">?</div>
+          <button class="btn" type="button" id="rp-go">Обрати випадково</button>
+          <p class="muted small" id="rp-note"></p>
+        </article>
+
+        <article class="card stack tool">
+          <span class="eyebrow">Тренажер</span>
+          <h3>Таблиця множення</h3>
+          <div class="pick-name" id="mt-q">Натисни «Почати»</div>
+          <form class="row" id="mt-form">
+            <input id="mt-a" inputmode="numeric" placeholder="Відповідь" aria-label="Відповідь" disabled>
+            <button class="btn" type="submit" id="mt-btn">Почати</button>
+          </form>
+          <p class="small" id="mt-score">10 прикладів. Спробуй без помилок!</p>
+        </article>
+
+        <article class="card stack tool">
+          <span class="eyebrow">Посилання</span>
+          <h3>Корисні сайти</h3>
+          <ul class="links">
+            <li><a href="https://uk.wikipedia.org" target="_blank" rel="noopener">Вікіпедія</a> — енциклопедія українською</li>
+            <li><a href="https://translate.google.com/?sl=en&amp;tl=uk" target="_blank" rel="noopener">Google Перекладач</a> — англійська й німецька</li>
+            <li><a href="https://www.desmos.com/calculator?lang=uk" target="_blank" rel="noopener">Desmos</a> — графіки й калькулятор</li>
+            <li><a href="https://goroh.pp.ua" target="_blank" rel="noopener">Горох</a> — тлумачення й наголоси українських слів</li>
+            <li><a href="https://classroom.google.com" target="_blank" rel="noopener">Google Classroom</a></li>
+          </ul>
+        </article>
+      </div>
     </section>
 
     <!-- Модерація (адміністратор і молодші модератори) -->

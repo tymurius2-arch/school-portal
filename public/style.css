@@ -177,6 +177,20 @@ textarea{resize:vertical; min-height:80px}
 .hint ul{margin:0; padding-left:18px; display:grid; gap:4px}
 .hint li{overflow-wrap:anywhere}
 
+/* Корисне */
+.tools{display:grid; gap:16px; grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr)); align-items:start}
+.tool .btn{text-align:center; text-decoration:none}
+.result{border-radius:12px; padding:12px 14px; background:var(--surface2); border:1px dashed var(--line); font-weight:600}
+.result .num{font-family:var(--f-display); font-size:1.8rem; color:var(--violet); display:block}
+.count{display:flex; gap:10px}
+.count div{flex:1; background:var(--surface2); border-radius:12px; padding:10px; text-align:center}
+.count b{display:block; font-family:var(--f-mono); font-size:1.6rem; font-variant-numeric:tabular-nums}
+.count span{font-size:.72rem; color:var(--muted); text-transform:uppercase; letter-spacing:.08em}
+.timer{font-family:var(--f-mono); font-size:3rem; font-weight:700; text-align:center; font-variant-numeric:tabular-nums}
+.pick-name{font-family:var(--f-display); font-size:1.4rem; text-align:center; padding:14px; background:var(--surface2); border-radius:12px; min-height:3.2rem}
+.links{margin:0; padding-left:18px; display:grid; gap:6px}
+.links a{color:var(--violet); font-weight:600}
+
 /* Модерація */
 .scroll{overflow-x:auto}
 .mod-table{border-collapse:collapse; width:100%; font-size:.92rem}
