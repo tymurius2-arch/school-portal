@@ -142,6 +142,7 @@
       <button class="tab" role="tab" data-tab="tools">☰ Корисне</button>
       <button class="tab" role="tab" data-tab="settings">⚙ Налаштування</button>
       <button class="tab" role="tab" data-tab="admin" hidden>Заявки <span class="badge" id="pending-count" hidden></span></button>
+      <button class="tab" role="tab" data-tab="roster" hidden>📋 Учні</button>
       <button class="tab" role="tab" data-tab="mod" hidden>Модерація <span class="badge" id="report-count" hidden></span></button>
     </nav>
   </header>
@@ -387,6 +388,24 @@
         <label class="inline" for="msg-sound"><input type="checkbox" id="msg-sound" style="width:auto"> Звук нових повідомлень</label>
       </div>
       <p class="muted small">Налаштування зберігаються на цьому пристрої.</p>
+    </section>
+
+    <!-- Учні: хто з класу вже на порталі (адмін і модератори) -->
+    <section class="panel" id="p-roster" role="tabpanel" hidden>
+      <div class="head"><div><h2 id="ro-title">Учні</h2><p class="muted small" id="ro-summary"></p></div></div>
+      <div class="chips" id="ro-class"></div>
+      <div class="card scroll"><table class="mod-table"><thead><tr><th>Учень</th><th>Статус</th><th>На порталі як</th></tr></thead><tbody id="ro-rows"></tbody></table></div>
+      <div class="card stack" id="ro-extra-box" hidden>
+        <h3>На порталі, але немає в списку</h3>
+        <div class="list" id="ro-extra"></div>
+      </div>
+      <form class="card stack" id="f-roster" hidden>
+        <h3>Список класу</h3>
+        <label for="ro-names">Кожен учень з нового рядка (прізвище та ім'я)<textarea id="ro-names" rows="8" placeholder="Калиновська Злата&#10;Коваленко Андрій"></textarea></label>
+        <p class="err" role="alert"></p>
+        <button class="btn" type="submit">Зберегти список</button>
+        <p class="muted small">Список бачать лише адміністратор і модератори. Він зберігається в базі порталу, а не в коді сайту.</p>
+      </form>
     </section>
 
     <!-- Модерація (адміністратор і молодші модератори) -->

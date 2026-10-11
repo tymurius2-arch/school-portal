@@ -370,17 +370,18 @@ function start() {
     if (isAdmin && profile.status !== "approved") updateDoc(doc(db, "users", me.uid), { status: "approved", reviewedAt: serverTimestamp() }).catch(console.error);
     $(".tab[data-tab=admin]").hidden = !isAdmin;
     $(".tab[data-tab=mod]").hidden = !(isAdmin || isMod);
+    $(".tab[data-tab=roster]").hidden = !(isAdmin || isMod);
     startPresence();
     setupDirectory(); setupChat(); setupGroups(); setupNews(); setupSchedule(); setupHints(); setupTools(); setupLibrary();
     setupProfiles(); setupUnread(); setupMyMute(); setupQuiz(); setupLog();
-    if (isAdmin || isMod) setupReports();
+    if (isAdmin || isMod) { setupReports(); setupRoster(); }
     if (isAdmin) setupAdmin();
     if (isAdmin || isMod) setupModeration();
     openTab(store.get("tab", "chat"));
   }
 
   function openTab(id) {
-    if (!$("#p-" + id) || (id === "admin" && !isAdmin) || (id === "mod" && !isAdmin && !isMod)) id = "chat";
+    if (!$("#p-" + id) || (id === "admin" && !isAdmin) || ((id === "mod" || id === "roster") && !isAdmin && !isMod)) id = "chat";
     $$(".tab").forEach(t => t.setAttribute("aria-selected", String(t.dataset.tab === id)));
     $$(".panel").forEach(p => p.hidden = p.id !== "p-" + id);
     store.set("tab", id);
@@ -396,7 +397,7 @@ function start() {
       if (!$("#f-group").hidden) renderPicker();
       const g = current && current.kind === "group" && groups.find(x => x.id === current.id);
       if (g) renderGroupBar(g);
-      renderGroupRequests(); renderModeration(); syncDirectory(); renderPicker2(); renderBday();
+      renderGroupRequests(); renderModeration(); syncDirectory(); renderPicker2(); renderBday(); renderRoster();
     }, e => console.error(e)));
   }
   // Адміністратор підтримує список в актуальному стані: схвалені — є, інші — ні.
@@ -510,6 +511,77 @@ function start() {
     const box = $("#messages");
     if (force || box.scrollHeight - box.scrollTop - box.clientHeight < 120) box.scrollTop = box.scrollHeight;
   }
+  /* ===== Учні: порівняння списку класу з тими, хто на порталі ===== */
+  let rosters = {}, roCls = null;
+  function setupRoster() {
+    roCls = roCls || myClass() || 6;
+    $("#f-roster").hidden = !isAdmin;
+    portalSubs.push(onSnapshot(collection(db, "roster"), s => {
+      rosters = {}; s.docs.forEach(d => { rosters[d.id] = d.data().names || []; });
+      if (document.activeElement !== $("#ro-names")) $("#ro-names").value = (rosters[roCls] || []).join("\n");
+      renderRoster();
+    }, e => console.error(e)));
+  }
+  // «Коваленко Андрій» і «андрій коваленко» — та сама людина.
+  const nameTokens = n => String(n).toLowerCase().replace(/[ʼ’'`]/g, "'").replace(/ё/g, "е").split(/[\s,.-]+/).filter(Boolean);
+  function rosterMatch(rosterName, people) {
+    const rt = nameTokens(rosterName);
+    const hits = people.filter(p => {
+      const pt = nameTokens(p.name), inter = pt.filter(t => rt.includes(t)).length;
+      return inter > 0 && inter === Math.min(pt.length, rt.length);
+    });
+    // Якщо збіг лише за одним словом (наприклад, тільки ім'я) — приймаємо, коли він єдиний.
+    const strong = hits.filter(p => nameTokens(p.name).filter(t => rt.includes(t)).length >= 2);
+    return strong[0] || (hits.length === 1 ? hits[0] : null);
+  }
+  function renderRoster() {
+    if (!(isAdmin || isMod) || !inPortal || !roCls) return;
+    // Хто на порталі: адмін бачить усі заявки, модератор — лише схвалених.
+    const people = isAdmin
+      ? apps.map(d => ({ id: d.id, ...d.data() })).filter(p => classOf(p) === roCls).map(p => ({ id: p.id, name: p.name, status: p.status }))
+      : Object.entries(dir).filter(([, p]) => p.cls === roCls).map(([id, p]) => ({ id, name: p.name, status: "approved" }));
+    $("#ro-class").innerHTML = CLASSES.map(n => {
+      const list = rosters[String(n)] || [];
+      return `<button class="chip" type="button" data-c="${n}" aria-pressed="${n === roCls}">${n} клас${list.length ? ` (${list.length})` : ""}</button>`;
+    }).join("");
+    $$("#ro-class .chip").forEach(c => c.addEventListener("click", () => { roCls = Number(c.dataset.c); $("#ro-names").value = (rosters[roCls] || []).join("\n"); renderRoster(); }));
+    const names = rosters[String(roCls)] || [];
+    $("#ro-title").textContent = `Учні · ${roCls} клас`;
+    const used = new Set(), body = $("#ro-rows"); body.replaceChildren();
+    let reg = 0;
+    if (!names.length) {
+      const tr = el("tr"), td = el("td", "muted", isAdmin ? "Список класу ще не додано. Встав його у формі нижче." : "Адміністратор ще не додав список цього класу.");
+      td.colSpan = 3; tr.append(td); body.append(tr);
+    }
+    const ST = { approved: ["✅ на порталі", "ok"], pending: ["⏳ подав заявку", "wait"], kicked: ["🚫 кікнутий", "bad"], rejected: ["✖ заявку відхилено", "bad"] };
+    names.forEach(n => {
+      const p = rosterMatch(n, people.filter(x => !used.has(x.id)));
+      if (p) used.add(p.id);
+      if (p && p.status === "approved") reg++;
+      const [txt, cls] = p ? (ST[p.status] || ST.pending) : ["❌ ще не зареєструвався", "no"];
+      const tr = el("tr");
+      tr.append(el("td", null, n), el("td", "st " + cls, txt), el("td", p ? null : "muted", p ? p.name : "—"));
+      body.append(tr);
+    });
+    $("#ro-summary").textContent = names.length ? `На порталі: ${reg} з ${names.length}` : "";
+    const extra = people.filter(p => !used.has(p.id) && p.status === "approved");
+    $("#ro-extra-box").hidden = !names.length || !extra.length;
+    $("#ro-extra").replaceChildren(...extra.map(p => el("div", "small", `${p.name} — можливо, ім'я записано інакше або це не учень цього класу`)));
+  }
+  $("#f-roster").addEventListener("submit", async e => {
+    e.preventDefault(); const f = e.target; formErr(f);
+    const names = [...new Set($("#ro-names").value.split("\n").map(s => s.replace(/\s+/g, " ").trim()).filter(Boolean))].map(s => s.slice(0, 60));
+    if (names.length > 60) { formErr(f, "Не більше 60 учнів в одному класі."); return; }
+    const btn = $("button[type=submit]", f); btn.disabled = true;
+    try {
+      await setDoc(doc(db, "roster", String(roCls)), { names, at: serverTimestamp() });
+      $("#ro-names").value = names.join("\n");
+      toast(`Список ${roCls} класу збережено: ${names.length}`);
+      logAction(`Оновив список ${roCls} класу (${names.length})`, "", "");
+    } catch (ex) { console.error(ex); formErr(f, "Не вдалося зберегти список."); }
+    finally { btn.disabled = false; }
+  });
+
   /* ===== Профіль: аватарка-емодзі, колір, день народження ===== */
   const COLORS = { violet: "#9C8CFF", pink: "#FF6FD8", cyan: "#4FD3EA", green: "#4FD08F", yellow: "#FFC93C", orange: "#FF9F43", red: "#FF7A82", blue: "#6FA8FF" };
   const COLOR_NAMES = { violet: "Фіолетовий", pink: "Рожевий", cyan: "Бірюзовий", green: "Зелений", yellow: "Жовтий", orange: "Помаранчевий", red: "Червоний", blue: "Синій" };
@@ -1068,7 +1140,7 @@ function start() {
   let apps = [], appFilter = "pending", appsReady = false;
   function setupAdmin() {
     portalSubs.push(onSnapshot(query(collection(db, "users"), orderBy("createdAt", "desc"), limit(500)),
-      s => { apps = s.docs; appsReady = true; renderAdmin(); syncDirectory(); },
+      s => { apps = s.docs; appsReady = true; renderAdmin(); syncDirectory(); renderRoster(); },
       e => { console.error(e); $("#admin-list").replaceChildren(emptyEl("Не вдалося завантажити заявки.")); }));
   }
   function renderAdmin() {
