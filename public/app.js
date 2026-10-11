@@ -270,7 +270,7 @@ function start() {
     const cls = myClass();
     $("#who").textContent = [profile.name, roleLabel(), cls ? `${cls} клас` : ""].filter(Boolean).join(" · ");
     if (inPortal) {
-      if (cls !== lastClass) { lastClass = cls; hintCls = cls || hintCls; setupChat(); setupNewsForm(); renderNews(); setupSchedule(); renderHints(); }
+      if (cls !== lastClass) { lastClass = cls; hintCls = cls || hintCls; setupChat(); setupNewsForm(); renderNews(); setupSchedule(); renderHints(); setupTools(); }
       return;
     }
     inPortal = true; lastClass = cls;
@@ -280,7 +280,7 @@ function start() {
     $(".tab[data-tab=admin]").hidden = !isAdmin;
     $(".tab[data-tab=mod]").hidden = !(isAdmin || isMod);
     startPresence();
-    setupDirectory(); setupChat(); setupGroups(); setupNews(); setupSchedule(); setupHints();
+    setupDirectory(); setupChat(); setupGroups(); setupNews(); setupSchedule(); setupHints(); setupTools();
     if (isAdmin) setupAdmin();
     if (isAdmin || isMod) setupModeration();
     openTab(store.get("tab", "chat"));
@@ -303,7 +303,7 @@ function start() {
       if (!$("#f-group").hidden) renderPicker();
       const g = current && current.kind === "group" && groups.find(x => x.id === current.id);
       if (g) renderGroupBar(g);
-      renderGroupRequests(); renderModeration(); syncDirectory();
+      renderGroupRequests(); renderModeration(); syncDirectory(); renderPicker2();
     }, e => console.error(e)));
   }
   // Адміністратор підтримує список в актуальному стані: схвалені — є, інші — ні.
@@ -683,6 +683,156 @@ function start() {
     const onVis = () => { if (document.visibilityState === "visible") touch(); };
     document.addEventListener("visibilitychange", onVis);
     portalSubs.push(() => { clearInterval(timer); document.removeEventListener("visibilitychange", onVis); });
+  }
+
+  /* ----- Корисне ----- */
+  let toolsReady = false;
+  function setupTools() {
+    // Telegram з домашкою — лише для свого класу, якщо посилання вказане в config.js
+    const tg = (SCHOOL.telegram || {})[myClass()];
+    $("#t-telegram").hidden = !tg;
+    if (tg) $("#tg-link").href = tg;
+    renderPicker2();
+    if (toolsReady) return;
+    toolsReady = true;
+    setupGradeCalc(); setupBreaks(); setupPomodoro(); setupConverter(); setupTrainer();
+    $("#rp-go").addEventListener("click", pickRandom);
+  }
+
+  // Калькулятор оцінок
+  function setupGradeCalc() {
+    $("#gc-target").innerHTML = Array.from({ length: 12 }, (_, i) => 12 - i).map(n => `<option ${n === 10 ? "selected" : ""}>${n}</option>`).join("");
+    ["gc-grades", "gc-target", "gc-left"].forEach(id => $("#" + id).addEventListener("input", calcGrades));
+    $("#gc-grades").value = store.get("grades", "");
+    calcGrades();
+  }
+  function calcGrades() {
+    const raw = $("#gc-grades").value; store.set("grades", raw);
+    const cur = raw.split(/[,\s;]+/).map(Number).filter(n => Number.isInteger(n) && n >= 1 && n <= 12);
+    const target = Number($("#gc-target").value), n = Number($("#gc-left").value), out = $("#gc-result");
+    if (!cur.length) { out.textContent = "Впиши свої оцінки — порахую, що треба отримати."; return; }
+    const sem = a => Math.min(12, Math.max(1, Math.floor(a.reduce((x, y) => x + y, 0) / a.length + 0.5)));
+    const need = Math.ceil(((target - 0.5) * (cur.length + n) - cur.reduce((x, y) => x + y, 0)) / n - 1e-9);
+    out.replaceChildren();
+    if (need <= 1) { out.append(el("span", "num", "✓"), `«${target}» майже в кишені: навіть з 1 вийде не нижче.`); }
+    else if (need > 12) { const best = sem([...cur, ...Array(n).fill(12)]); out.append(el("span", "num", String(best)), `Навіть з усіма «12» вийде максимум ${best}. Спитай учителя про додаткову роботу.`); }
+    else out.append(el("span", "num", String(need)), `Треба щонайменше ${need}${n > 1 ? ` за кожну з ${n} робіт` : " за наступну роботу"}, щоб вийшло ${target}.`);
+  }
+
+  // Відлік до канікул
+  function setupBreaks() {
+    const tick = () => {
+      const now = new Date();
+      const next = (SCHOOL.breaks || []).map(b => ({ ...b, start: new Date(b.from + "T00:00:00"), end: new Date(b.to + "T23:59:59") })).find(b => b.end > now);
+      if (!next) { $("#br-name").textContent = "Канікули ще не вказані"; return; }
+      const fmt = d => d.toLocaleDateString("uk-UA", { day: "numeric", month: "long" });
+      $("#br-dates").textContent = `${fmt(next.start)} — ${fmt(next.end)} (орієнтовно)`;
+      if (next.start <= now) { $("#br-name").textContent = `${next.name} уже йдуть! 🎉`; ["d", "h", "m"].forEach(k => $("#br-" + k).textContent = "0"); return; }
+      $("#br-name").textContent = `До: ${next.name.toLowerCase()}`;
+      let s = Math.floor((next.start - now) / 1000);
+      $("#br-d").textContent = Math.floor(s / 86400); s %= 86400;
+      $("#br-h").textContent = Math.floor(s / 3600); s %= 3600;
+      $("#br-m").textContent = Math.floor(s / 60);
+    };
+    tick(); setInterval(tick, 30000);
+  }
+
+  // Таймер 25/5
+  let pmLeft = 25 * 60, pmWork = true, pmTimer = null;
+  function beep() {
+    try {
+      const ac = new (window.AudioContext || window.webkitAudioContext)();
+      [880, 1175, 1568].forEach((f, i) => { const o = ac.createOscillator(), g = ac.createGain(); o.frequency.value = f; o.connect(g); g.connect(ac.destination); const t = ac.currentTime + i * .25; g.gain.setValueAtTime(.2, t); g.gain.exponentialRampToValueAtTime(.001, t + .3); o.start(t); o.stop(t + .35); });
+    } catch {}
+  }
+  function pmShow() {
+    $("#pm-time").textContent = `${String(Math.floor(pmLeft / 60)).padStart(2, "0")}:${String(pmLeft % 60).padStart(2, "0")}`;
+    $("#pm-mode").textContent = pmWork ? "Робота · 25 хв" : "Перерва · 5 хв";
+  }
+  function setupPomodoro() {
+    $("#pm-start").addEventListener("click", () => {
+      if (pmTimer) { clearInterval(pmTimer); pmTimer = null; $("#pm-start").textContent = "Продовжити"; return; }
+      $("#pm-start").textContent = "Пауза";
+      pmTimer = setInterval(() => {
+        pmLeft--;
+        if (pmLeft <= 0) { beep(); pmWork = !pmWork; pmLeft = (pmWork ? 25 : 5) * 60; toast(pmWork ? "Перерва скінчилась — до роботи!" : "Час відпочити 5 хвилин"); }
+        pmShow();
+      }, 1000);
+    });
+    $("#pm-reset").addEventListener("click", () => { clearInterval(pmTimer); pmTimer = null; pmWork = true; pmLeft = 25 * 60; $("#pm-start").textContent = "Старт"; pmShow(); });
+    pmShow();
+  }
+
+  // Перетворювач одиниць (усе зводимо до базової одиниці)
+  const UNITS = {
+    "Довжина": { "мм": 0.001, "см": 0.01, "дм": 0.1, "м": 1, "км": 1000 },
+    "Маса": { "г": 0.001, "кг": 1, "ц": 100, "т": 1000 },
+    "Час": { "с": 1, "хв": 60, "год": 3600, "доба": 86400, "тиждень": 604800 },
+    "Площа": { "см²": 0.0001, "дм²": 0.01, "м²": 1, "а (сотка)": 100, "га": 10000, "км²": 1000000 }
+  };
+  let cvKind = "Довжина";
+  function setupConverter() {
+    const fill = () => {
+      $("#cv-kind").innerHTML = Object.keys(UNITS).map(k => `<button class="chip" type="button" data-k="${k}" aria-pressed="${k === cvKind}">${k}</button>`).join("");
+      $$("#cv-kind .chip").forEach(c => c.addEventListener("click", () => { cvKind = c.dataset.k; fill(); }));
+      const names = Object.keys(UNITS[cvKind]);
+      $("#cv-from").innerHTML = names.map(n => `<option>${n}</option>`).join("");
+      $("#cv-to").innerHTML = names.map(n => `<option>${n}</option>`).join("");
+      $("#cv-from").value = names[cvKind === "Час" ? 2 : 3] || names[0]; $("#cv-to").value = names[cvKind === "Час" ? 1 : 1];
+      convert();
+    };
+    ["cv-val", "cv-from", "cv-to"].forEach(id => $("#" + id).addEventListener("input", convert));
+    fill();
+  }
+  function convert() {
+    const v = Number(String($("#cv-val").value).replace(",", ".")), u = UNITS[cvKind];
+    const from = $("#cv-from").value, to = $("#cv-to").value;
+    if (!Number.isFinite(v)) { $("#cv-result").textContent = "Впиши число"; return; }
+    const r = v * u[from] / u[to];
+    const nice = Number.isInteger(r) ? r : Number(r.toPrecision(8));
+    $("#cv-result").textContent = `${String(v).replace(".", ",")} ${from} = ${nice.toLocaleString("uk-UA", { maximumFractionDigits: 8 })} ${to}`;
+  }
+
+  // Хто відповідає?
+  function classmates() {
+    const c = myClass();
+    return Object.entries(dir).filter(([, p]) => c ? p.cls === c : true).map(([, p]) => p.name);
+  }
+  function renderPicker2() {
+    const n = classmates().length;
+    $("#rp-note").textContent = n ? `Обираю з ${n} ${myClass() ? `учнів ${myClass()} класу` : "учасників"} порталу.` : "Список з'явиться, коли однокласники приєднаються до порталу.";
+  }
+  function pickRandom() {
+    const names = classmates();
+    if (!names.length) { renderPicker2(); return; }
+    let i = 0; const btn = $("#rp-go"); btn.disabled = true;
+    const spin = setInterval(() => {
+      $("#rp-name").textContent = names[Math.floor(Math.random() * names.length)];
+      if (++i > 14) { clearInterval(spin); btn.disabled = false; }
+    }, 70);
+  }
+
+  // Тренажер таблиці множення
+  let mt = null;
+  function setupTrainer() {
+    const next = () => { mt.a = 2 + Math.floor(Math.random() * 8); mt.b = 2 + Math.floor(Math.random() * 8); $("#mt-q").textContent = `${mt.a} × ${mt.b} = ?`; $("#mt-a").value = ""; $("#mt-a").focus(); };
+    $("#mt-form").addEventListener("submit", e => {
+      e.preventDefault();
+      if (!mt) { mt = { n: 0, ok: 0, t0: Date.now() }; $("#mt-a").disabled = false; $("#mt-btn").textContent = "Відповісти"; $("#mt-score").textContent = "Приклад 1 з 10"; next(); return; }
+      const ans = Number($("#mt-a").value);
+      if (!$("#mt-a").value.trim()) return;
+      const right = ans === mt.a * mt.b;
+      if (right) mt.ok++; else toast(`${mt.a} × ${mt.b} = ${mt.a * mt.b}`);
+      mt.n++;
+      if (mt.n >= 10) {
+        const sec = Math.round((Date.now() - mt.t0) / 1000);
+        $("#mt-q").textContent = mt.ok === 10 ? "Ідеально! 🏆" : `${mt.ok} з 10`;
+        $("#mt-score").textContent = `Правильно: ${mt.ok} з 10 за ${sec} с. Ще раз?`;
+        $("#mt-a").disabled = true; $("#mt-btn").textContent = "Почати"; mt = null; return;
+      }
+      $("#mt-score").textContent = `Приклад ${mt.n + 1} з 10 · правильно ${mt.ok}`;
+      next();
+    });
   }
 
   /* ----- Чати й запрошення на схвалення (адміністратор) ----- */
