@@ -97,7 +97,7 @@ service cloud.firestore {
 
     // Додаткових адміністраторів додає власник у консолі Firebase.
     match /admins/{uid} {
-      allow read: if signedIn() && request.auth.uid == uid;
+      allow read: if signedIn() && (request.auth.uid == uid || approved() || isAdmin());
       allow write: if isOwner();
     }
 
@@ -113,7 +113,8 @@ service cloud.firestore {
 
     // Молодших модераторів призначає й знімає лише власник.
     match /mods/{uid} {
-      allow read: if signedIn() && (request.auth.uid == uid || isAdmin() || isMod());
+      // Схвалені учасники бачать, хто модератор (значок 🛡 у профілі).
+      allow read: if signedIn() && (request.auth.uid == uid || approved() || isAdmin());
       allow create: if isOwner()
         && request.resource.data.keys().hasOnly(['createdAt'])
         && request.resource.data.createdAt == request.time;
@@ -169,7 +170,8 @@ service cloud.firestore {
     match /profiles/{uid} {
       allow read: if approved() || isAdmin();
       allow write: if (approved() || isAdmin()) && request.auth.uid == uid
-        && request.resource.data.keys().hasOnly(['emoji', 'color', 'bday'])
+        && request.resource.data.keys().hasOnly(['emoji', 'color', 'bday', 'bio'])
+        && (!('bio' in request.resource.data) || shortText(request.resource.data.bio, 0, 150))
         && shortText(request.resource.data.emoji, 1, 8)
         && request.resource.data.color in ['violet', 'pink', 'cyan', 'green', 'yellow', 'orange', 'red', 'blue']
         && (!('bday' in request.resource.data) || request.resource.data.bday.matches('(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])'));

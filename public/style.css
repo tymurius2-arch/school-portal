@@ -263,6 +263,20 @@ textarea{resize:vertical; min-height:80px}
 .upd li{overflow-wrap:anywhere}
 .upd.fresh{border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset}
 
+/* Профіль */
+.pv{display:grid; justify-items:center; text-align:center; gap:8px; padding:28px 20px}
+.pv-ava{width:112px; height:112px; border-radius:50%; display:grid; place-items:center; font-size:3.4rem; background:var(--violet); box-shadow:0 8px 30px color-mix(in srgb,var(--violet) 45%,transparent)}
+.pv-name{font-size:1.5rem}
+.pv-badges{display:flex; gap:6px; flex-wrap:wrap; justify-content:center}
+.pv-bio{max-width:420px; white-space:pre-wrap; overflow-wrap:anywhere}
+.pv-rows{width:100%; max-width:420px; display:grid; text-align:left; border-top:1px solid var(--line); margin-top:6px}
+.pv-rows div{display:flex; justify-content:space-between; gap:12px; padding:10px 4px; border-bottom:1px solid var(--line)}
+.pv-rows span{color:var(--muted)}
+.crown{margin-left:4px}
+.who-link{cursor:pointer}
+.who-link:hover{text-decoration:underline}
+.back{justify-self:start}
+
 /* Налаштування */
 .skins{display:grid; gap:12px; grid-template-columns:repeat(auto-fill,minmax(min(100%,180px),1fr))}
 .skin{display:grid; gap:10px; text-align:left; padding:14px; border-radius:14px; border:2px solid var(--line); cursor:pointer; color:#fff; font:inherit}
