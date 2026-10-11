@@ -1564,7 +1564,7 @@ function start() {
       const [txt, cls] = seenText(seen[m.id]);
       tr.append(name, clsTd, el("td", "seen " + cls, txt));
       if (isAdmin || isMod) {
-        const td = el("td"); td.className = "acts";
+        const cell = el("td"), td = el("div", "acts"); cell.append(td);
         if (m.id !== me.uid && m.id !== ownerUid && !mods.has(m.id)) td.append(muteControl(m));
         if (isAdmin && m.id !== me.uid && m.id !== ownerUid) td.append(confirmButton("Кікнути", "btn badb sm", async () => {
           await updateDoc(doc(db, "users", m.id), { status: "kicked", reviewedAt: serverTimestamp() });
@@ -1583,7 +1583,7 @@ function start() {
           });
           td.append(b);
         }
-        tr.append(td);
+        tr.append(cell);
       }
       body.append(tr);
     });
