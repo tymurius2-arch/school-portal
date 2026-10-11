@@ -251,6 +251,10 @@ textarea{resize:vertical; min-height:80px}
 .mute-sel{width:auto; padding:6px 8px}
 .composer .icon-btn{width:42px; height:42px}
 
+/* Учні */
+.st{white-space:nowrap; font-weight:600}
+.st.ok{color:var(--ok)} .st.wait{color:var(--warn)} .st.no{color:var(--muted)} .st.bad{color:var(--bad)}
+
 /* Налаштування */
 .skins{display:grid; gap:12px; grid-template-columns:repeat(auto-fill,minmax(min(100%,180px),1fr))}
 .skin{display:grid; gap:10px; text-align:left; padding:14px; border-radius:14px; border:2px solid var(--line); cursor:pointer; color:#fff; font:inherit}

@@ -191,6 +191,16 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // Списки класів (хто має бути на порталі). Бачать адмін і модератори, змінює адмін.
+    match /roster/{cls} {
+      allow read: if isStaff();
+      allow write: if isAdmin()
+        && request.resource.data.keys().hasOnly(['names', 'at'])
+        && request.resource.data.names is list
+        && request.resource.data.names.size() <= 60
+        && request.resource.data.at == request.time;
+    }
+
     // Список учасників (ім'я, роль, клас), щоб запрошувати в чати.
     // Читають схвалені учасники, пише лише адміністратор.
     match /directory/{uid} {
