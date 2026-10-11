@@ -120,6 +120,7 @@
       <button class="tab" role="tab" data-tab="news">Оголошення</button>
       <button class="tab" role="tab" data-tab="schedule">Розклад</button>
       <button class="tab" role="tab" data-tab="hints">Підказки</button>
+      <button class="tab" role="tab" data-tab="library">📚 Бібліотека</button>
       <button class="tab" role="tab" data-tab="tools">☰ Корисне</button>
       <button class="tab" role="tab" data-tab="settings">⚙ Налаштування</button>
       <button class="tab" role="tab" data-tab="admin" hidden>Заявки <span class="badge" id="pending-count" hidden></span></button>
@@ -195,6 +196,33 @@
       <div class="chips" id="hints-class"></div>
       <div class="hint-grid" id="hints-list"></div>
       <p class="muted small">Це короткі шпаргалки. Якщо щось не збігається з підручником — вір підручнику.</p>
+    </section>
+
+    <!-- Бібліотека -->
+    <section class="panel" id="p-library" role="tabpanel" hidden>
+      <div class="head"><h2 id="lib-title">Бібліотека</h2><input id="lib-search" type="search" placeholder="Пошук книги чи предмета" aria-label="Пошук у бібліотеці" style="max-width:260px"></div>
+      <div class="chips" id="lib-class"></div>
+      <h3 id="lib-tb-title">Підручники</h3>
+      <div class="list" id="lib-textbooks"></div>
+      <h3>Офіційні джерела</h3>
+      <div class="tools" id="lib-official"></div>
+      <h3>Книги й посилання від адміна</h3>
+      <div class="chips" id="lib-subjects"></div>
+      <div class="list" id="lib-books"></div>
+      <form class="card stack" id="f-book" hidden>
+        <h3>Додати книгу</h3>
+        <label for="b-title">Назва<input id="b-title" maxlength="120" placeholder="Математика 6 клас, частина 1"></label>
+        <div class="row">
+          <label for="b-subject">Предмет<input id="b-subject" maxlength="40" list="b-subjects" placeholder="Математика"></label>
+          <label for="b-cls">Клас<select id="b-cls"></select></label>
+        </div>
+        <datalist id="b-subjects"></datalist>
+        <label for="b-author">Автор <span class="muted">(необов'язково)</span><input id="b-author" maxlength="80"></label>
+        <label for="b-url">Посилання (https://…)<input id="b-url" type="url" maxlength="500" placeholder="https://"></label>
+        <p class="err" role="alert"></p>
+        <button class="btn" type="submit">Додати в бібліотеку</button>
+        <p class="muted small">Додавай лише законні джерела: сайти видавництв, Міністерства освіти, вільні бібліотеки. Без піратських копій.</p>
+      </form>
     </section>
 
     <!-- Корисне -->

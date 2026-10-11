@@ -9,6 +9,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { firebaseConfig, SCHOOL } from "./config.js";
 import { HINTS } from "./hints.js";
+import { TEXTBOOKS } from "./textbooks.js";
 
 /* ---------- Дрібниці ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -308,7 +309,7 @@ function start() {
     const cls = myClass();
     $("#who").textContent = [profile.name, roleLabel(), cls ? `${cls} клас` : ""].filter(Boolean).join(" · ");
     if (inPortal) {
-      if (cls !== lastClass) { lastClass = cls; hintCls = cls || hintCls; setupChat(); setupNewsForm(); renderNews(); setupSchedule(); renderHints(); setupTools(); }
+      if (cls !== lastClass) { lastClass = cls; hintCls = cls || hintCls; setupChat(); setupNewsForm(); renderNews(); setupSchedule(); renderHints(); setupTools(); libCls = cls || libCls; renderLibrary(); }
       return;
     }
     inPortal = true; lastClass = cls;
@@ -318,7 +319,7 @@ function start() {
     $(".tab[data-tab=admin]").hidden = !isAdmin;
     $(".tab[data-tab=mod]").hidden = !(isAdmin || isMod);
     startPresence();
-    setupDirectory(); setupChat(); setupGroups(); setupNews(); setupSchedule(); setupHints(); setupTools();
+    setupDirectory(); setupChat(); setupGroups(); setupNews(); setupSchedule(); setupHints(); setupTools(); setupLibrary();
     if (isAdmin) setupAdmin();
     if (isAdmin || isMod) setupModeration();
     openTab(store.get("tab", "chat"));
@@ -722,6 +723,93 @@ function start() {
     document.addEventListener("visibilitychange", onVis);
     portalSubs.push(() => { clearInterval(timer); document.removeEventListener("visibilitychange", onVis); });
   }
+
+  /* ----- Бібліотека ----- */
+  // Перевірені безкоштовні джерела. ВШО — офіційна платформа МОН, УкрЛіб — тексти шкільної програми.
+  const OFFICIAL = c => [
+    c >= 2 && { icon: "🎓", title: "Всеукраїнська школа онлайн", note: `Уроки, конспекти й тести за програмою ${c} класу. Офіційна платформа МОН, безкоштовна.`, url: "https://lms.e-school.net.ua/course_category/" },
+    c >= 5 && { icon: "📖", title: `Українська література · ${c} клас`, note: "Тексти всіх творів шкільної програми.", url: `https://www.ukrlib.com.ua/school/?klas=${c}` },
+    c >= 5 && { icon: "🌍", title: `Зарубіжна література · ${c} клас`, note: "Твори зарубіжних авторів з програми.", url: `https://www.ukrlib.com.ua/school-zl/?klas=${c}` },
+    c < 5 && { icon: "🧚", title: "Українські народні казки", note: "Казки, легенди й загадки.", url: "https://www.ukrlib.com.ua/narod/" },
+    { icon: "🎧", title: "Аудіокниги", note: "Слухай твори української літератури.", url: "https://www.ukrlib.com.ua/audio/" }
+  ].filter(Boolean);
+  let libCls = null, libSubject = "all", books = [];
+  const canAddBooks = () => isAdmin || isMod;
+  function setupLibrary() {
+    libCls = libCls || myClass() || 6;
+    $("#f-book").hidden = !canAddBooks();
+    $("#b-cls").innerHTML = `<option value="0">Усі класи</option>` + classOptions();
+    portalSubs.push(onSnapshot(query(collection(db, "books"), orderBy("createdAt", "desc"), limit(500)),
+      s => { books = s.docs; renderLibrary(); },
+      e => { console.error(e); $("#lib-books").replaceChildren(emptyEl("Не вдалося завантажити книги.")); }));
+    renderLibrary();
+  }
+  $("#lib-search").addEventListener("input", () => renderLibrary());
+  function renderLibrary() {
+    if (!libCls) return;
+    const mc = myClass();
+    $("#lib-title").textContent = `Бібліотека · ${libCls} клас`;
+    $("#lib-class").innerHTML = CLASSES.map(n => `<button class="chip" type="button" data-c="${n}" aria-pressed="${n === libCls}">${n} клас${n === mc ? " · твій" : ""}</button>`).join("");
+    $$("#lib-class .chip").forEach(c => c.addEventListener("click", () => { libCls = Number(c.dataset.c); libSubject = "all"; $("#b-cls").value = String(libCls); renderLibrary(); }));
+    const q = $("#lib-search").value.trim().toLowerCase();
+    const off = $("#lib-official"); off.replaceChildren();
+    OFFICIAL(libCls).filter(r => !q || (r.title + " " + r.note).toLowerCase().includes(q)).forEach(r => {
+      const card = el("article", "card res");
+      const a = el("a", "btn sm", "Відкрити"); a.href = r.url; a.target = "_blank"; a.rel = "noopener";
+      card.append(el("span", "eyebrow", r.icon + " Офіційне джерело"), el("h3", null, r.title), el("p", "small muted", r.note), a);
+      off.append(card);
+    });
+    const tb = $("#lib-textbooks"); tb.replaceChildren();
+    const tbList = (TEXTBOOKS[libCls] || []).filter(b => !q || [b.t, b.a, b.s].join(" ").toLowerCase().includes(q));
+    $("#lib-tb-title").hidden = !tbList.length;
+    tbList.forEach(b => {
+      const card = el("article", "card book");
+      const a = el("a", null, b.t); a.href = b.url; a.target = "_blank"; a.rel = "noopener";
+      const info = el("div"); info.append(a, el("small", null, [b.s, b.a].filter(Boolean).join(" · ")));
+      card.append(el("span", "ic", "📗"), info, el("span"));
+      tb.append(card);
+    });
+    const forClass = books.map(d => ({ d, b: d.data() })).filter(x => x.b.cls === libCls || x.b.cls === 0);
+    const subjects = [...new Set(forClass.map(x => x.b.subject))].sort((a, b) => a.localeCompare(b, "uk"));
+    if (libSubject !== "all" && !subjects.includes(libSubject)) libSubject = "all";
+    $("#lib-subjects").innerHTML = subjects.length ? [["all", "Усі предмети"], ...subjects.map(s => [s, s])].map(([k, t]) => `<button class="chip" type="button" data-s="${esc(k)}" aria-pressed="${k === libSubject}">${esc(t)}</button>`).join("") : "";
+    $$("#lib-subjects .chip").forEach(c => c.addEventListener("click", () => { libSubject = c.dataset.s; renderLibrary(); }));
+    $("#b-subjects").innerHTML = [...new Set([...subjects, ...SUBJECTS_LIST])].map(s => `<option value="${esc(s)}">`).join("");
+    const list = forClass
+      .filter(x => libSubject === "all" || x.b.subject === libSubject)
+      .filter(x => !q || [x.b.title, x.b.author || "", x.b.subject].join(" ").toLowerCase().includes(q))
+      .sort((a, b) => a.b.subject.localeCompare(b.b.subject, "uk") || a.b.title.localeCompare(b.b.title, "uk"));
+    const box = $("#lib-books"); box.replaceChildren();
+    if (!list.length) { box.append(emptyEl(canAddBooks() ? "Тут ще немає книг. Додай першу у формі нижче." : "Тут ще немає книг. Адмін скоро додасть.")); return; }
+    list.forEach(({ d, b }) => {
+      const card = el("article", "card book");
+      const a = el("a", null, b.title); a.href = b.url; a.target = "_blank"; a.rel = "noopener";
+      const info = el("div"); info.append(a, el("small", null, [b.subject, b.author, b.cls ? `${b.cls} клас` : "усі класи"].filter(Boolean).join(" · ")));
+      card.append(el("span", "ic", "📘"), info);
+      if (canAddBooks()) card.append(confirmButton("Видалити", "btn ghost sm", () => deleteDoc(d.ref)));
+      else card.append(el("span"));
+      box.append(card);
+    });
+  }
+  const SUBJECTS_LIST = ["Математика", "Алгебра", "Геометрія", "Українська мова", "Українська література", "Зарубіжна література", "Англійська мова", "Німецька мова", "Історія", "Географія", "Біологія", "Фізика", "Хімія", "Пізнаємо природу", "Інформатика", "Мистецтво", "ЗБД"];
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  $("#f-book").addEventListener("submit", async e => {
+    e.preventDefault(); const f = e.target; formErr(f);
+    const title = $("#b-title").value.trim(), subject = $("#b-subject").value.trim(), author = $("#b-author").value.trim(), url = $("#b-url").value.trim();
+    const cls = Number($("#b-cls").value);
+    if (title.length < 2) { formErr(f, "Впиши назву книги."); return; }
+    if (subject.length < 2) { formErr(f, "Вкажи предмет."); return; }
+    if (!/^https:\/\/\S+$/.test(url)) { formErr(f, "Посилання має починатися з https://"); return; }
+    const btn = $("button[type=submit]", f); btn.disabled = true;
+    try {
+      const data = { title, subject, cls, url, uid: me.uid, name: profile.name, createdAt: serverTimestamp() };
+      if (author) data.author = author;
+      await addDoc(collection(db, "books"), data);
+      ["b-title", "b-author", "b-url"].forEach(id => $("#" + id).value = "");
+      toast("Книгу додано");
+    } catch (ex) { console.error(ex); formErr(f, "Не вдалося додати. Перевір дані."); }
+    finally { btn.disabled = false; }
+  });
 
   /* ----- Корисне ----- */
   let toolsReady = false;
