@@ -43,14 +43,36 @@ function confirmButton(label, cls, action) {
   return b;
 }
 
-/* ---------- Тема ---------- */
+/* ---------- Тема й розмір тексту (зберігаються на пристрої) ---------- */
 const root = document.documentElement;
-const isDark = () => root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
-const syncTheme = () => { $("#b-theme").textContent = isDark() ? "☀️" : "🌙"; };
-// Підпільний портал за замовчуванням темний.
-root.dataset.theme = store.get("theme", "dark");
-syncTheme();
-$("#b-theme").addEventListener("click", () => { root.dataset.theme = isDark() ? "light" : "dark"; store.set("theme", root.dataset.theme); syncTheme(); });
+const SKINS = [
+  { id: "space", name: "Космос", note: "фіолетова класика", c: ["#0B0F2A", "#9C8CFF", "#FFC93C"] },
+  { id: "neon", name: "Неон", note: "яскраве світіння", c: ["#05030F", "#FF2BD6", "#00F0FF"] },
+  { id: "matrix", name: "Матриця", note: "зелений код", c: ["#020A04", "#39FF6A", "#7FBF8E"] },
+  { id: "sunset", name: "Захід сонця", note: "теплі вогні", c: ["#1A0B14", "#FF8A3D", "#FF5C8A"] },
+  { id: "ocean", name: "Океан", note: "глибока вода", c: ["#03141C", "#2EE6D6", "#4DA3FF"] }
+];
+const SIZES = [["normal", "Звичайний"], ["large", "Більший"], ["xl", "Великий"]];
+function applyLook() {
+  root.dataset.skin = store.get("skin", "space");
+  root.dataset.size = store.get("size", "normal");
+}
+applyLook();
+function renderSettings() {
+  const box = $("#skins"); box.replaceChildren();
+  SKINS.forEach(s => {
+    const b = el("button", "skin"); b.type = "button";
+    b.style.background = s.c[0];
+    b.setAttribute("aria-pressed", String(root.dataset.skin === s.id));
+    const sw = el("span", "swatches"); s.c.forEach(c => { const i = el("i"); i.style.background = c; sw.append(i); });
+    b.append(sw, el("b", null, s.name), el("small", null, s.note));
+    b.addEventListener("click", () => { store.set("skin", s.id); applyLook(); renderSettings(); });
+    box.append(b);
+  });
+  $("#sizes").innerHTML = SIZES.map(([k, t]) => `<button class="chip" type="button" data-s="${k}" aria-pressed="${root.dataset.size === k}">${t}</button>`).join("");
+  $$("#sizes .chip").forEach(c => c.addEventListener("click", () => { store.set("size", c.dataset.s); applyLook(); renderSettings(); }));
+}
+renderSettings();
 
 /* ---------- Екрани ---------- */
 const show = id => $$(".screen").forEach(s => s.hidden = s.id !== "s-" + id);

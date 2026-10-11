@@ -1,36 +1,52 @@
 /* Стиль «космічної станції», як у першій версії порталу. */
 :root{
-  --bg:#EEF1FB; --surface:#FFFFFF; --surface2:#F5F7FE;
-  --fg:#141936; --muted:#59608A; --line:#D3D9F0;
-  --accent:#FFC23D; --accent-ink:#2A1F00; --cyan:#0E8FA8; --violet:#5B4BD6;
-  --ok:#1E8E5A; --warn:#B86E00; --bad:#C2363F;
-  --mine:#E9E5FF; --stars:rgba(91,75,214,.10);
+  /* Тема «Космос» (за замовчуванням). Інші теми лише перевизначають кольори. */
+  --bg:#0B0F2A; --surface:#161C4A; --surface2:#1D2459;
+  --fg:#EEF0FF; --muted:#A3A9D6; --line:#2B3370;
+  --accent:#FFC93C; --accent-ink:#2A1F00; --cyan:#4FD3EA; --violet:#9C8CFF;
+  --ok:#4FD08F; --warn:#FFB347; --bad:#FF7A82;
+  --mine:#2C2A6B; --stars:rgba(255,255,255,.55); --glow:transparent;
   --f-display:"Unbounded","Arial Black",system-ui,sans-serif;
   --f-body:"Golos Text",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
   --f-mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
-  --r:14px; color-scheme:light;
+  --r:14px; color-scheme:dark; font-size:16px;
 }
-@media (prefers-color-scheme: dark){
-  :root:not([data-theme="light"]){
-    --bg:#0B0F2A; --surface:#161C4A; --surface2:#1D2459;
-    --fg:#EEF0FF; --muted:#A3A9D6; --line:#2B3370;
-    --accent:#FFC93C; --cyan:#4FD3EA; --violet:#9C8CFF;
-    --ok:#4FD08F; --warn:#FFB347; --bad:#FF7A82;
-    --mine:#2C2A6B; --stars:rgba(255,255,255,.55); color-scheme:dark;
-  }
+:root[data-skin="neon"]{
+  --bg:#05030F; --surface:#120A24; --surface2:#1A0F33;
+  --fg:#F7F0FF; --muted:#B9A3E0; --line:#3D1F70;
+  --accent:#FF2BD6; --accent-ink:#1A0016; --cyan:#00F0FF; --violet:#B44DFF;
+  --mine:#2E0F52; --stars:rgba(0,240,255,.6); --glow:rgba(255,43,214,.55);
 }
-:root[data-theme="dark"]{
-  --bg:#0B0F2A; --surface:#161C4A; --surface2:#1D2459;
-  --fg:#EEF0FF; --muted:#A3A9D6; --line:#2B3370;
-  --accent:#FFC93C; --cyan:#4FD3EA; --violet:#9C8CFF;
-  --ok:#4FD08F; --warn:#FFB347; --bad:#FF7A82;
-  --mine:#2C2A6B; --stars:rgba(255,255,255,.55); color-scheme:dark;
+:root[data-skin="matrix"]{
+  --bg:#020A04; --surface:#07170B; --surface2:#0B2211;
+  --fg:#D8FFE0; --muted:#7FBF8E; --line:#17482A;
+  --accent:#39FF6A; --accent-ink:#00170A; --cyan:#39FF6A; --violet:#2EE85F;
+  --mine:#0F3A1A; --stars:rgba(57,255,106,.45); --glow:rgba(57,255,106,.35);
 }
+:root[data-skin="sunset"]{
+  --bg:#1A0B14; --surface:#2A1220; --surface2:#35172A;
+  --fg:#FFEFF5; --muted:#D9A3B8; --line:#55264A;
+  --accent:#FF8A3D; --accent-ink:#2A1000; --cyan:#FFC15E; --violet:#FF5C8A;
+  --mine:#4A1A33; --stars:rgba(255,193,94,.45);
+}
+:root[data-skin="ocean"]{
+  --bg:#03141C; --surface:#082431; --surface2:#0C2E3E;
+  --fg:#E6FBFF; --muted:#8FC3D1; --line:#17495B;
+  --accent:#2EE6D6; --accent-ink:#00201D; --cyan:#5CC8FF; --violet:#4DA3FF;
+  --mine:#0E3A4E; --stars:rgba(92,200,255,.45);
+}
+:root[data-size="large"]{font-size:18px}
+:root[data-size="xl"]{font-size:20px}
+/* Неонове світіння */
+:root[data-skin="neon"] h1, :root[data-skin="neon"] h2{text-shadow:0 0 12px var(--glow)}
+:root[data-skin="neon"] .tab[aria-selected="true"], :root[data-skin="neon"] .btn:not(.ghost){box-shadow:0 0 14px var(--glow)}
+:root[data-skin="neon"] .card{box-shadow:0 0 0 1px rgba(0,240,255,.12), 0 0 22px rgba(180,77,255,.12)}
+:root[data-skin="matrix"] h1, :root[data-skin="matrix"] h2{text-shadow:0 0 10px var(--glow)}
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 html,body{margin:0; min-height:100%}
 body{
-  background:var(--bg); color:var(--fg); font-family:var(--f-body); font-size:16px; line-height:1.5;
+  background:var(--bg); color:var(--fg); font-family:var(--f-body); font-size:1rem; line-height:1.5;
   background-image:
     radial-gradient(1px 1px at 12% 18%,var(--stars) 99%,transparent),
     radial-gradient(1.5px 1.5px at 72% 8%,var(--stars) 99%,transparent),
@@ -190,6 +206,15 @@ textarea{resize:vertical; min-height:80px}
 .pick-name{font-family:var(--f-display); font-size:1.4rem; text-align:center; padding:14px; background:var(--surface2); border-radius:12px; min-height:3.2rem}
 .links{margin:0; padding-left:18px; display:grid; gap:6px}
 .links a{color:var(--violet); font-weight:600}
+
+/* Налаштування */
+.skins{display:grid; gap:12px; grid-template-columns:repeat(auto-fill,minmax(min(100%,180px),1fr))}
+.skin{display:grid; gap:10px; text-align:left; padding:14px; border-radius:14px; border:2px solid var(--line); cursor:pointer; color:#fff; font:inherit}
+.skin[aria-pressed="true"]{outline:3px solid var(--accent); outline-offset:2px}
+.skin b{font-family:var(--f-display); font-size:.95rem}
+.skin small{opacity:.75}
+.swatches{display:flex; gap:6px}
+.swatches i{width:22px; height:22px; border-radius:50%; border:1px solid rgba(255,255,255,.25)}
 
 /* Модерація */
 .scroll{overflow-x:auto}
