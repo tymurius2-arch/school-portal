@@ -52,6 +52,9 @@
       <button type="button" role="tab" id="t-login" aria-selected="true">Вхід</button>
       <button type="button" role="tab" id="t-register" aria-selected="false">Хочу до своїх</button>
     </div>
+    <button class="btn ghost google" type="button" id="b-google"><span aria-hidden="true">G</span> Увійти через Google</button>
+    <p class="err" id="google-err" role="alert"></p>
+    <p class="or muted small">або поштою й паролем</p>
 
     <form id="f-login" class="stack" novalidate>
       <label for="l-email">Електронна пошта<input id="l-email" type="email" autocomplete="email" required></label>
@@ -125,7 +128,7 @@
       <button class="btn ghost sm" type="button" data-logout>Вийти</button>
     </div>
     <nav class="tabs" role="tablist" aria-label="Розділи">
-      <button class="tab" role="tab" data-tab="chat">Чати</button>
+      <button class="tab" role="tab" data-tab="chat">Чати <span class="badge" id="chat-unread" hidden></span></button>
       <button class="tab" role="tab" data-tab="news">Оголошення</button>
       <button class="tab" role="tab" data-tab="schedule">Розклад</button>
       <button class="tab" role="tab" data-tab="hints">Підказки</button>
@@ -133,7 +136,7 @@
       <button class="tab" role="tab" data-tab="tools">☰ Корисне</button>
       <button class="tab" role="tab" data-tab="settings">⚙ Налаштування</button>
       <button class="tab" role="tab" data-tab="admin" hidden>Заявки <span class="badge" id="pending-count" hidden></span></button>
-      <button class="tab" role="tab" data-tab="mod" hidden>Модерація</button>
+      <button class="tab" role="tab" data-tab="mod" hidden>Модерація <span class="badge" id="report-count" hidden></span></button>
     </nav>
   </header>
 
@@ -141,6 +144,7 @@
   <div class="wrap">
     <!-- Чат -->
     <section class="panel" id="p-chat" role="tabpanel">
+      <div class="bday" id="bday" hidden></div>
       <div class="chips" id="chat-switch" aria-label="Мої чати"></div>
       <div class="head">
         <h2 id="chat-title">Чат класу</h2>
@@ -167,9 +171,21 @@
         </div>
         <p class="muted small">Чат запрацює, щойно адміністратор його схвалить.</p>
       </form>
+      <form class="card stack" id="f-poll" hidden>
+        <h3>📊 Нове опитування</h3>
+        <label for="poll-q">Питання<input id="poll-q" maxlength="200" placeholder="Куди підемо після уроків?"></label>
+        <div class="stack" id="poll-opts"></div>
+        <button class="link" type="button" id="poll-add">+ Ще варіант</button>
+        <p class="err" role="alert"></p>
+        <div class="row">
+          <button class="btn" type="submit">Опублікувати опитування</button>
+          <button class="btn ghost" type="button" id="poll-cancel">Скасувати</button>
+        </div>
+      </form>
       <div class="card chat" id="chat-box">
         <div class="messages" id="messages" aria-live="polite"></div>
         <form class="composer" id="f-chat">
+          <button class="icon-btn" type="button" id="b-poll" title="Опитування" aria-label="Створити опитування">📊</button>
           <input id="chat-text" maxlength="500" autocomplete="off" placeholder="Напиши повідомлення…" aria-label="Повідомлення">
           <button class="btn" type="submit">Надіслати</button>
         </form>
@@ -239,6 +255,15 @@
     <section class="panel" id="p-tools" role="tabpanel" hidden>
       <div class="head"><h2>Корисне</h2></div>
       <div class="tools">
+
+        <article class="card stack tool" id="quiz-card">
+          <span class="eyebrow" id="qz-cls">Тест дня</span>
+          <h3 id="qz-q">Завантаження…</h3>
+          <div class="stack" id="qz-opts"></div>
+          <p class="small" id="qz-msg"></p>
+          <span class="eyebrow">Топ класу за місяць</span>
+          <ol class="leaders" id="qz-top"></ol>
+        </article>
 
         <article class="card stack tool" id="t-telegram" hidden>
           <span class="eyebrow">Домашка</span>
@@ -333,9 +358,27 @@
         <h3>Тема</h3>
         <div class="skins" id="skins"></div>
       </div>
+      <div class="card stack" id="profile-box" hidden>
+        <h3>Мій профіль</h3>
+        <div class="profile-preview" id="pf-preview"></div>
+        <span class="eyebrow">Аватарка</span>
+        <div class="emoji-grid" id="pf-emoji"></div>
+        <span class="eyebrow">Колір імені</span>
+        <div class="chips" id="pf-color"></div>
+        <span class="eyebrow">День народження (рік не потрібен)</span>
+        <div class="row">
+          <label for="pf-day">День<select id="pf-day"></select></label>
+          <label for="pf-month">Місяць<select id="pf-month"></select></label>
+        </div>
+        <button class="btn" type="button" id="pf-save">Зберегти профіль</button>
+      </div>
       <div class="card stack">
         <h3>Розмір тексту</h3>
         <div class="chips" id="sizes"></div>
+      </div>
+      <div class="card stack">
+        <h3>Сповіщення</h3>
+        <label class="inline" for="msg-sound"><input type="checkbox" id="msg-sound" style="width:auto"> Звук нових повідомлень</label>
       </div>
       <p class="muted small">Налаштування зберігаються на цьому пристрої.</p>
     </section>
@@ -355,8 +398,17 @@
         </div>
         <p class="muted small">Під час перерви всі, крім адміністратора, бачать екран «Технічна перерва», а чати й оголошення закриті й на сервері.</p>
       </div>
+      <div class="card stack" id="reports-box">
+        <div class="head"><h3>Скарги</h3><span class="pill warn" id="reports-count">0</span></div>
+        <div class="list" id="reports"></div>
+      </div>
       <div class="chips" id="mod-filter"></div>
       <div class="card scroll"><table class="mod-table"><thead><tr id="mod-head"><th>Ім'я</th><th>Клас</th><th>Заходив</th></tr></thead><tbody id="mod-rows"></tbody></table></div>
+      <div class="card stack" id="log-box" hidden>
+        <h3>Журнал дій</h3>
+        <p class="muted small">Що робили адміністратор і модератори. Бачиш лише ти.</p>
+        <div class="log" id="log"></div>
+      </div>
       <p class="muted small" id="mod-note">Клас змінюється одразу: у людини відкриється чат і оголошення нового класу.</p>
     </section>
 

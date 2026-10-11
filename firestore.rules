@@ -19,6 +19,41 @@ service cloud.firestore {
     function isMod() {
       return approved() && exists(/databases/$(database)/documents/mods/$(request.auth.uid));
     }
+    function isStaff() { return isAdmin() || isMod(); }
+    // Мут: людина тимчасово не може писати.
+    function muted() {
+      return exists(/databases/$(database)/documents/mutes/$(request.auth.uid))
+        && get(/databases/$(database)/documents/mutes/$(request.auth.uid)).data.until > request.time;
+    }
+    // Адміністраторів і модераторів не можна замутити.
+    function protectedUser(uid) {
+      return exists(/databases/$(database)/documents/mods/$(uid))
+        || exists(/databases/$(database)/documents/admins/$(uid))
+        || (exists(/databases/$(database)/documents/meta/owner)
+            && get(/databases/$(database)/documents/meta/owner).data.uid == uid);
+    }
+    // Нове повідомлення: текст або опитування (opts — від 2 до 6 варіантів).
+    function validMessage(d) {
+      return d.keys().hasOnly(['uid', 'name', 'role', 'text', 'createdAt', 'opts'])
+        && d.uid == request.auth.uid
+        && d.name == me().name
+        && d.role == me().role
+        && shortText(d.text, 1, 500)
+        && (!('opts' in d) || (d.opts is list && d.opts.size() >= 2 && d.opts.size() <= 6))
+        && d.createdAt == request.time;
+    }
+    // Реакції й голоси: кожен змінює лише власний запис.
+    function reactOk() {
+      let d = request.resource.data;
+      let o = resource.data;
+      let me_ = request.auth.uid;
+      return d.diff(o).affectedKeys().hasOnly(['r', 'votes'])
+        && d.get('r', {}).diff(o.get('r', {})).affectedKeys().hasOnly([me_])
+        && d.get('votes', {}).diff(o.get('votes', {})).affectedKeys().hasOnly([me_])
+        && (!(me_ in d.get('r', {})) || d.r[me_] in ['👍', '😂', '❤️', '🔥', '😮'])
+        && (!(me_ in d.get('votes', {})) || ('opts' in o && d.votes[me_] is int
+                                             && d.votes[me_] >= 0 && d.votes[me_] < o.opts.size()));
+    }
     function hasProfile() {
       return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
     }
@@ -86,6 +121,76 @@ service cloud.firestore {
       allow delete: if isOwner();
     }
 
+    // Скарги на повідомлення: подає будь-який учасник, бачать адмін і модератори.
+    match /reports/{id} {
+      allow read: if isStaff();
+      allow create: if approved()
+        && request.resource.data.keys().hasOnly(['path', 'text', 'author', 'authorName', 'by', 'byName', 'status', 'createdAt'])
+        && shortText(request.resource.data.path, 3, 200)
+        && shortText(request.resource.data.text, 0, 500)
+        && request.resource.data.by == request.auth.uid
+        && request.resource.data.byName == me().name
+        && request.resource.data.status == 'open'
+        && request.resource.data.createdAt == request.time;
+      allow update: if isStaff()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+        && request.resource.data.status in ['open', 'done'];
+      allow delete: if isAdmin();
+    }
+
+    // Мут до певного часу (не довше тижня). Ставлять адмін і модератори.
+    match /mutes/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isStaff());
+      allow create, update: if isStaff() && !protectedUser(uid)
+        && request.resource.data.keys().hasOnly(['until', 'by', 'at'])
+        && request.resource.data.until is timestamp
+        && request.resource.data.until > request.time
+        && request.resource.data.until < request.time + duration.value(8, 'd')
+        && request.resource.data.by == request.auth.uid
+        && request.resource.data.at == request.time;
+      allow delete: if isStaff();
+    }
+
+    // Журнал дій адміністрації: бачить лише головний адмін, змінити не можна.
+    match /log/{id} {
+      allow read: if isOwner();
+      allow create: if isStaff() && hasProfile()
+        && request.resource.data.keys().hasOnly(['action', 'target', 'targetName', 'by', 'byName', 'at'])
+        && shortText(request.resource.data.action, 1, 120)
+        && shortText(request.resource.data.target, 0, 128)
+        && shortText(request.resource.data.targetName, 0, 80)
+        && request.resource.data.by == request.auth.uid
+        && request.resource.data.byName == me().name
+        && request.resource.data.at == request.time;
+      allow update, delete: if false;
+    }
+
+    // Профіль: аватарка-емодзі, колір імені, день народження (без року).
+    match /profiles/{uid} {
+      allow read: if approved() || isAdmin();
+      allow write: if (approved() || isAdmin()) && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['emoji', 'color', 'bday'])
+        && shortText(request.resource.data.emoji, 1, 8)
+        && request.resource.data.color in ['violet', 'pink', 'cyan', 'green', 'yellow', 'orange', 'red', 'blue']
+        && (!('bday' in request.resource.data) || request.resource.data.bday.matches('(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])'));
+    }
+
+    // Тест дня: одна спроба на день (id = дата_користувач).
+    match /quiz/{id} {
+      allow read: if approved() || isAdmin();
+      allow create: if (approved() || isAdmin()) && hasProfile()
+        && request.resource.data.keys().hasOnly(['uid', 'name', 'cls', 'day', 'month', 'ok', 'at'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.name == me().name
+        && request.resource.data.cls is int
+        && request.resource.data.ok is bool
+        && request.resource.data.day.matches('20[0-9][0-9]-[01][0-9]-[0-3][0-9]')
+        && request.resource.data.month == request.resource.data.day[0:7]
+        && id == request.resource.data.day + '_' + request.auth.uid
+        && request.resource.data.at == request.time;
+      allow update, delete: if false;
+    }
+
     // Список учасників (ім'я, роль, клас), щоб запрошувати в чати.
     // Читають схвалені учасники, пише лише адміністратор.
     match /directory/{uid} {
@@ -136,14 +241,8 @@ service cloud.firestore {
     // Чат класу: classes/<номер класу>/messages/<id>
     match /classes/{cls}/messages/{msg} {
       allow read: if canUseClass(int(cls)) || isMod();
-      allow create: if canUseClass(int(cls)) && hasProfile()
-        && request.resource.data.keys().hasOnly(['uid', 'name', 'role', 'text', 'createdAt'])
-        && request.resource.data.uid == request.auth.uid
-        && request.resource.data.name == me().name
-        && request.resource.data.role == me().role
-        && shortText(request.resource.data.text, 1, 500)
-        && request.resource.data.createdAt == request.time;
-      allow update: if false;
+      allow create: if canUseClass(int(cls)) && hasProfile() && !muted() && validMessage(request.resource.data);
+      allow update: if (canUseClass(int(cls)) || isMod()) && reactOk();
       allow delete: if isAdmin() || isMod() || (signedIn() && resource.data.uid == request.auth.uid);
     }
 
@@ -177,14 +276,8 @@ service cloud.firestore {
         function grp() { return get(/databases/$(database)/documents/groups/$(gid)).data; }
         function inGroup() { return approved() && grp().status == 'approved' && request.auth.uid in grp().members; }
         allow read: if isAdmin() || inGroup();
-        allow create: if inGroup()
-          && request.resource.data.keys().hasOnly(['uid', 'name', 'role', 'text', 'createdAt'])
-          && request.resource.data.uid == request.auth.uid
-          && request.resource.data.name == me().name
-          && request.resource.data.role == me().role
-          && shortText(request.resource.data.text, 1, 500)
-          && request.resource.data.createdAt == request.time;
-        allow update: if false;
+        allow create: if inGroup() && !muted() && validMessage(request.resource.data);
+        allow update: if inGroup() && reactOk();
         allow delete: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
       }
     }
@@ -210,7 +303,7 @@ service cloud.firestore {
     // Оголошення: cls = 0 — для всієї школи, 1–9 — для класу.
     match /announcements/{id} {
       allow read: if isAdmin() || approved();
-      allow create: if (isAdmin() || approved()) && hasProfile()
+      allow create: if (isAdmin() || approved()) && hasProfile() && !muted()
         && request.resource.data.keys().hasOnly(['cls', 'title', 'text', 'uid', 'name', 'role', 'createdAt'])
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.name == me().name

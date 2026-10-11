@@ -222,6 +222,35 @@ textarea{resize:vertical; min-height:80px}
 .maint-banner{background:var(--bad); color:#fff; text-align:center; font-weight:700; padding:8px 16px; font-size:.9rem}
 .wait.kicked .orbit::before{background:var(--bad)}
 
+/* Реакції, опитування, профіль */
+.reacts{display:flex; gap:4px; flex-wrap:wrap; margin-top:4px}
+.react{border:1px solid var(--line); background:var(--surface); border-radius:999px; padding:1px 8px; font-size:.82rem; cursor:pointer}
+.react.on{border-color:var(--accent); background:color-mix(in srgb,var(--accent) 18%,var(--surface))}
+.react.add{color:var(--muted)}
+.reacts .pick{display:inline-flex; gap:2px}
+.poll{display:grid; gap:6px; min-width:min(260px,60vw)}
+.poll .opt{position:relative; overflow:hidden; display:flex; justify-content:space-between; gap:8px; text-align:left; border:1px solid var(--line); border-radius:10px; padding:7px 10px; background:var(--surface); cursor:pointer}
+.poll .opt .fill{position:absolute; inset:0 auto 0 0; background:color-mix(in srgb,var(--violet) 28%,transparent); transition:width .4s}
+.poll .opt span{position:relative}
+.poll .opt.mine{border-color:var(--violet)}
+.poll .pct{font-family:var(--f-mono); font-size:.8rem}
+.chip .badge{margin-left:6px}
+.bday{padding:10px 14px; border-radius:12px; background:linear-gradient(90deg,color-mix(in srgb,var(--accent) 30%,var(--surface)),var(--surface)); font-weight:700}
+.emoji-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(44px,1fr)); gap:6px}
+.emoji-grid button{font-size:1.4rem; padding:6px; border-radius:10px; border:2px solid var(--line); background:var(--surface2); cursor:pointer}
+.emoji-grid button[aria-pressed="true"]{border-color:var(--accent)}
+.profile-preview{font-weight:700; font-size:1.1rem}
+.google{display:flex; align-items:center; justify-content:center; gap:10px; width:100%}
+.google span{font-family:var(--f-display); font-weight:800; color:var(--accent)}
+.or{text-align:center; margin:-4px 0}
+.leaders{margin:0; padding-left:22px; display:grid; gap:4px}
+.leaders li b{font-family:var(--f-mono)}
+.log{display:grid; gap:6px; max-height:360px; overflow-y:auto; font-size:.88rem}
+.log div{padding:6px 10px; border-radius:8px; background:var(--surface2)}
+.log time{color:var(--muted); font-family:var(--f-mono); font-size:.78rem; margin-right:8px}
+.mute-sel{width:auto; padding:6px 8px}
+.composer .icon-btn{width:42px; height:42px}
+
 /* Налаштування */
 .skins{display:grid; gap:12px; grid-template-columns:repeat(auto-fill,minmax(min(100%,180px),1fr))}
 .skin{display:grid; gap:10px; text-align:left; padding:14px; border-radius:14px; border:2px solid var(--line); cursor:pointer; color:#fff; font:inherit}
