@@ -20,9 +20,10 @@
 <body>
 
 <!-- Завантаження -->
-<main class="screen center" id="s-loading">
-  <div class="planet" aria-hidden="true"></div>
-  <p class="muted">Завантаження…</p>
+<main class="screen center splash" id="s-loading">
+  <img class="splash-logo" src="logo.png" alt="Totosha High-Minds School" width="180" height="180">
+  <div class="splash-bar" aria-hidden="true"><i></i></div>
+  <p class="muted">Підпільний портал вантажиться…</p>
 </main>
 
 <!-- Сайт не налаштовано -->
@@ -157,7 +158,10 @@
       <div class="chips" id="chat-switch" aria-label="Мої чати"></div>
       <div class="head">
         <h2 id="chat-title">Чат класу</h2>
-        <label class="inline" for="chat-class" id="chat-class-wrap" hidden>Клас <select id="chat-class"></select></label>
+        <div class="row" style="flex:0 1 auto; align-items:center">
+          <input id="chat-search" type="search" placeholder="🔍 Пошук у чаті" aria-label="Пошук у чаті" style="max-width:220px">
+          <label class="inline" for="chat-class" id="chat-class-wrap" hidden>Клас <select id="chat-class"></select></label>
+        </div>
       </div>
       <div class="group-bar" id="group-bar" hidden>
         <span class="muted small" id="group-members"></span>
@@ -191,10 +195,19 @@
           <button class="btn ghost" type="button" id="poll-cancel">Скасувати</button>
         </div>
       </form>
+      <div class="pin-bar" id="pin-bar" hidden>
+        <button class="link" type="button" id="pin-go"></button>
+        <button class="del" type="button" id="pin-x" hidden title="Відкріпити">✕</button>
+      </div>
       <div class="card chat" id="chat-box">
         <div class="messages" id="messages" aria-live="polite"></div>
+        <div class="typing" id="typing" aria-live="polite"></div>
+        <div class="reply-bar" id="reply-bar" hidden><span id="reply-text"></span><button class="del" type="button" id="reply-x" aria-label="Скасувати відповідь">✕</button></div>
+        <div class="mentions" id="mentions" hidden></div>
+        <div class="stickers" id="stickers" hidden></div>
         <form class="composer" id="f-chat">
           <button class="icon-btn" type="button" id="b-poll" title="Опитування" aria-label="Створити опитування">📊</button>
+          <button class="icon-btn" type="button" id="b-sticker" title="Стікери" aria-label="Стікери">😀</button>
           <input id="chat-text" maxlength="500" autocomplete="off" placeholder="Напиши повідомлення…" aria-label="Повідомлення">
           <button class="btn" type="submit">Надіслати</button>
         </form>
@@ -213,6 +226,7 @@
           <label for="n-cls">Для кого<select id="n-cls"></select></label>
           <label for="n-title">Заголовок<input id="n-title" maxlength="80" required></label>
           <label for="n-text">Текст<textarea id="n-text" maxlength="1000" required></textarea></label>
+          <label for="n-when" id="n-when-wrap" hidden>Опублікувати пізніше <span class="muted">(необов'язково)</span><input id="n-when" type="datetime-local"></label>
           <p class="err" role="alert"></p>
           <button class="btn" type="submit">Опублікувати</button>
         </form>
@@ -264,6 +278,18 @@
     <section class="panel" id="p-tools" role="tabpanel" hidden>
       <div class="head"><h2>Корисне</h2></div>
       <div class="tools">
+
+        <form class="card stack tool" id="f-qbank" hidden>
+          <span class="eyebrow">Для модераторів</span>
+          <h3>Додати питання до тесту дня</h3>
+          <label for="qb-cls">Клас<select id="qb-cls"></select></label>
+          <label for="qb-q">Питання<input id="qb-q" maxlength="200" placeholder="Скільки буде 7 × 8?"></label>
+          <div class="stack" id="qb-opts"></div>
+          <label for="qb-a">Правильна відповідь<select id="qb-a"><option value="0">1-й варіант</option><option value="1">2-й варіант</option><option value="2">3-й варіант</option><option value="3">4-й варіант</option></select></label>
+          <p class="err" role="alert"></p>
+          <button class="btn" type="submit">Додати питання</button>
+          <div class="list small" id="qb-list"></div>
+        </form>
 
         <article class="card stack tool" id="quiz-card">
           <span class="eyebrow" id="qz-cls">Тест дня</span>
@@ -386,6 +412,7 @@
         <p class="muted" id="pv-sub"></p>
         <p class="pv-bio" id="pv-bio"></p>
         <div class="pv-rows" id="pv-rows"></div>
+        <div class="achv" id="pv-achv"></div>
         <div class="acts" id="pv-acts"></div>
       </div>
       <div class="card stack" id="profile-box" hidden>
@@ -395,6 +422,8 @@
         <div class="emoji-grid" id="pf-emoji"></div>
         <span class="eyebrow">Колір імені</span>
         <div class="chips" id="pf-color"></div>
+        <span class="eyebrow">Рамка аватарки (відкривається за тест дня)</span>
+        <div class="frames" id="pf-frames"></div>
         <label for="pf-bio">Про себе <span class="muted">(до 150 символів)</span><textarea id="pf-bio" maxlength="150" rows="2" placeholder="Люблю футбол і Minecraft ⚽"></textarea></label>
         <span class="eyebrow">День народження (рік не потрібен)</span>
         <div class="row">
@@ -456,6 +485,12 @@
         </div>
         <p class="muted small">Під час перерви всі, крім адміністратора, бачать екран «Технічна перерва», а чати й оголошення закриті й на сервері.</p>
       </div>
+      <div class="card stack" id="stats-box" hidden>
+        <div class="head"><h3>Статистика</h3><button class="btn ghost sm" type="button" id="b-backup">⬇ Резервна копія</button></div>
+        <div class="stat-tiles" id="stat-tiles"></div>
+        <span class="eyebrow">Заходили на портал за 7 днів</span>
+        <div class="bars" id="stat-bars" role="img" aria-label="Відвідування за 7 днів"></div>
+      </div>
       <div class="card stack" id="reports-box">
         <div class="head"><h3>Скарги</h3><span class="pill warn" id="reports-count">0</span></div>
         <div class="list" id="reports"></div>
@@ -471,6 +506,17 @@
     </section>
 
     <section class="panel" id="p-admin" role="tabpanel" hidden>
+      <div class="card stack" id="invites-box">
+        <div class="head"><h3>Коди-запрошення</h3></div>
+        <p class="muted small">Дай однокласнику код — з ним заявка схвалюється одразу, без очікування.</p>
+        <form class="row" id="f-invite">
+          <label for="inv-cls">Клас<select id="inv-cls"></select></label>
+          <label for="inv-max">Скільки людей<input id="inv-max" type="number" min="1" max="60" value="5"></label>
+          <label for="inv-days">Діє днів<input id="inv-days" type="number" min="1" max="30" value="7"></label>
+          <button class="btn" type="submit" style="align-self:end">Створити код</button>
+        </form>
+        <div class="list" id="invites"></div>
+      </div>
       <div class="card stack" id="group-requests-box">
         <div class="head"><h3>Чати на схвалення</h3><span class="pill warn" id="group-req-count">0</span></div>
         <div class="list" id="group-requests"></div>
@@ -498,6 +544,7 @@
     <label>Ім'я дитини<input name="child" maxlength="60" placeholder="Андрій"></label>
     <label>Клас дитини<select name="childClass" class="class-select"></select></label>
   </div>
+  <label>Код-запрошення <span class="muted">(якщо дали — тебе впустять одразу)</span><input name="invite" maxlength="6" autocomplete="off" placeholder="ABC123" class="code-input"></label>
   <label>Як з тобою зв'язатися <span class="muted">(необов'язково)</span><input name="contact" maxlength="80" placeholder="Telegram або телефон батьків"></label>
   <label>Коментар <span class="muted">(необов'язково)</span><textarea name="note" maxlength="300"></textarea></label>
 </template>

@@ -5,7 +5,8 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   getFirestore, connectFirestoreEmulator, doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc,
-  collection, query, where, orderBy, limit, onSnapshot, serverTimestamp, arrayUnion, arrayRemove, deleteField, Timestamp
+  collection, query, where, orderBy, limit, onSnapshot, serverTimestamp, arrayUnion, arrayRemove, deleteField, Timestamp,
+  getDocs, writeBatch, increment
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { firebaseConfig, SCHOOL } from "./config.js";
 import { HINTS } from "./hints.js";
@@ -120,6 +121,8 @@ function start() {
     if (role === "parent") { d.child = v("child"); d.childClass = Number(v("childClass")); if (d.child.length < 2) return [null, "Вкажіть ім'я дитини.", "child"]; }
     if (v("contact")) d.contact = v("contact");
     if (v("note")) d.note = v("note");
+    const inv = v("invite").toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (inv) { if (inv.length !== 6) return [null, "Код-запрошення має 6 символів.", "invite"]; d.invite = inv; }
     return [d];
   }
   function fillProfile(form, p) {
@@ -191,7 +194,7 @@ function start() {
     registering = true;
     try {
       const cred = await createUserWithEmailAndPassword(auth, email, pass);
-      try { await setDoc(doc(db, "users", cred.user.uid), data); }
+      try { await submitApplication(cred.user.uid, data); }
       catch (ex) { console.error(ex); toast("Акаунт створено, але заявка не надійшла. Надішли її ще раз."); }
     } catch (ex) { formErr(f, authMessage(ex)); }
     finally { registering = false; btn.disabled = false; route(); }
@@ -319,7 +322,7 @@ function start() {
     const [data, msg, field] = readProfile(f);
     if (!data) { formErr(f, msg); f.elements[field] && f.elements[field].focus(); return; }
     const btn = $("button[type=submit]", f); btn.disabled = true;
-    try { await setDoc(doc(db, "users", me.uid), data); editing = false; toast("Заявку надіслано"); route(); }
+    try { await submitApplication(me.uid, data); editing = false; if (!data.invite) toast("Заявку надіслано"); route(); }
     catch (ex) { console.error(ex); formErr(f, "Не вдалося надіслати заявку. Перевір дані й інтернет."); }
     finally { btn.disabled = false; }
   });
@@ -373,9 +376,9 @@ function start() {
     $(".tab[data-tab=roster]").hidden = !(isAdmin || isMod);
     startPresence();
     setupDirectory(); setupChat(); setupGroups(); setupNews(); setupSchedule(); setupHints(); setupTools(); setupLibrary();
-    setupProfiles(); setupUnread(); setupMyMute(); setupQuiz(); setupLog(); setupUpdates();
-    if (isAdmin || isMod) { setupReports(); setupRoster(); }
-    if (isAdmin) setupAdmin();
+    setupProfiles(); setupUnread(); setupMyMute(); setupQuiz(); setupLog(); setupUpdates(); setupChatExtras(); recordVisit();
+    if (isAdmin || isMod) { setupReports(); setupRoster(); setupQbank(); }
+    if (isAdmin) { setupAdmin(); setupStats(); setupInvites(); }
     if (isAdmin || isMod) setupModeration();
     openTab(store.get("tab", "chat"));
   }
@@ -466,7 +469,7 @@ function start() {
     $("#chat-class-wrap").hidden = !canPickClass();
     $("#group-bar").hidden = true;
     setComposer(canWriteClass(cls), "Тут можна лише читати — писати можна в чат свого класу");
-    applyMute(); $("#f-poll").hidden = true; markRead(curKey());
+    applyMute(); $("#f-poll").hidden = true; watchExtras(curKey()); markRead(curKey());
     listen(query(collection(db, "classes", String(cls), "messages"), orderBy("createdAt", "desc"), limit(200)), "class");
     renderSwitch();
   }
@@ -478,7 +481,7 @@ function start() {
     $("#chat-class-wrap").hidden = true;
     renderGroupBar(g);
     setComposer(true);
-    applyMute(); $("#f-poll").hidden = true; markRead(curKey());
+    applyMute(); $("#f-poll").hidden = true; watchExtras(curKey()); markRead(curKey());
     listen(query(collection(db, "groups", id, "messages"), orderBy("createdAt", "desc"), limit(200)), "group");
     renderSwitch();
   }
@@ -562,6 +565,141 @@ function start() {
     finally { btn.disabled = false; }
   });
 
+  /* ===== Банк питань для тесту дня (модератори) ===== */
+  let qbank = [];
+  function setupQbank() {
+    $("#f-qbank").hidden = false;
+    $("#qb-cls").innerHTML = classOptions(); $("#qb-cls").value = String(myClass() || 6);
+    $("#qb-opts").replaceChildren(...[1, 2, 3, 4].map(i => { const x = el("input"); x.maxLength = 60; x.placeholder = `${i}-й варіант` + (i > 2 ? " (необов'язково)" : ""); x.setAttribute("aria-label", `${i}-й варіант`); return x; }));
+    portalSubs.push(onSnapshot(collection(db, "quizbank"), s => { qbank = s.docs; renderQbank(); }, e => console.error(e)));
+  }
+  $("#qb-cls").addEventListener("change", () => renderQbank());
+  function renderQbank() {
+    const c = Number($("#qb-cls").value), box = $("#qb-list"); box.replaceChildren();
+    const mine = qbank.filter(d => d.data().cls === c);
+    box.append(el("span", "muted", `Додано для ${c} класу: ${mine.length} (+ ${(QUIZ[c] || []).length} вбудованих)`));
+    mine.slice(-8).forEach(d => {
+      const q = d.data(), row = el("div", "invite");
+      row.append(el("span", null, `${q.q} → ${q.o[q.a]}`), confirmButton("Видалити", "btn ghost sm", async () => { await deleteDoc(d.ref); logAction("Видалив питання тесту", "", q.q); }));
+      box.append(row);
+    });
+  }
+  $("#f-qbank").addEventListener("submit", async e => {
+    e.preventDefault(); const f = e.target; formErr(f);
+    const q = $("#qb-q").value.trim(), o = $$("#qb-opts input").map(x => x.value.trim()).filter(Boolean), a = Number($("#qb-a").value);
+    if (q.length < 3) { formErr(f, "Напиши питання."); return; }
+    if (o.length < 2) { formErr(f, "Потрібно щонайменше 2 варіанти."); return; }
+    if (a >= o.length) { formErr(f, "Правильна відповідь має бути серед заповнених варіантів."); return; }
+    try {
+      await addDoc(collection(db, "quizbank"), { cls: Number($("#qb-cls").value), q, o, a, by: me.uid, at: serverTimestamp() });
+      $("#qb-q").value = ""; $$("#qb-opts input").forEach(x => { x.value = ""; });
+      toast("Питання додано"); logAction("Додав питання тесту", "", q);
+    } catch (ex) { console.error(ex); formErr(f, "Не вдалося додати питання."); }
+  });
+
+  /* ===== Статистика й резервна копія (адміністратор) ===== */
+  let visits = [];
+  function recordVisit() {
+    const day = isoDay(new Date()), key = `visit.${me.uid}.${day}`;
+    if (store.get(key, 0)) return;
+    setDoc(doc(db, "visits", `${day}_${me.uid}`), { day, uid: me.uid, at: serverTimestamp() }).catch(() => {}).finally(() => store.set(key, 1));
+  }
+  function setupStats() {
+    $("#stats-box").hidden = false;
+    const from = new Date(); from.setDate(from.getDate() - 6);
+    portalSubs.push(onSnapshot(query(collection(db, "visits"), where("day", ">=", isoDay(from))), s => { visits = s.docs.map(d => d.data()); renderStats(); }, e => console.error(e)));
+    const t = setInterval(renderStats, 60000); portalSubs.push(() => clearInterval(t));
+  }
+  function renderStats() {
+    if (!isAdmin || !inPortal) return;
+    const days = [...Array(7)].map((_, i) => { const d = new Date(); d.setDate(d.getDate() - 6 + i); return d; });
+    const per = days.map(d => new Set(visits.filter(v => v.day === isoDay(d)).map(v => v.uid)).size);
+    const uniq = new Set(visits.map(v => v.uid)).size;
+    const online = Object.keys(dir).filter(id => seenText(seen[id])[1] === "on").length;
+    const tiles = [[Object.keys(dir).length, "учасників"], [online, "онлайн зараз"], [per[6], "заходили сьогодні"], [uniq, "різних людей за 7 днів"], [quizMonthDocs.length, "відповідей у тесті дня (місяць)"]];
+    $("#stat-tiles").replaceChildren(...tiles.map(([n, t]) => { const d = el("div"); d.append(el("b", null, String(n)), el("span", null, t)); return d; }));
+    const max = Math.max(1, ...per), wd = ["Нд", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
+    $("#stat-bars").replaceChildren(...days.map((d, i) => {
+      const bar = el("div", "bar"); bar.title = `${fmtDay(d)}: ${per[i]}`;
+      const col = el("i", "col"); col.style.height = `${Math.round(per[i] / max * 100)}%`;
+      bar.append(el("b", null, String(per[i])), col, el("span", null, i === 6 ? "Сьогодні" : wd[d.getDay()]));
+      return bar;
+    }));
+  }
+  const plain = v => v && typeof v.toDate === "function" ? v.toDate().toISOString()
+    : Array.isArray(v) ? v.map(plain)
+    : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, plain(x)])) : v;
+  $("#b-backup").addEventListener("click", async e => {
+    const b = e.currentTarget; b.disabled = true; toast("Готую резервну копію…");
+    const out = { createdAt: new Date().toISOString(), project: firebaseConfig.projectId, data: {} };
+    const cols = ["users", "directory", "announcements", "groups", "books", "updates", "roster", "profiles", "quiz", "quizbank", "invites", "reports", "mutes", "mods", "admins", "pins"];
+    if (isOwner) cols.push("log");
+    for (const c of cols) {
+      try { const s = await getDocs(collection(db, c)); out.data[c] = s.docs.map(d => ({ id: d.id, ...plain(d.data()) })); }
+      catch (err) { out.data[c] = { error: err.code || String(err) }; }
+    }
+    out.data.classMessages = {};
+    for (const n of CLASSES) {
+      try { const s = await getDocs(query(collection(db, "classes", String(n), "messages"), orderBy("createdAt", "desc"), limit(1000))); out.data.classMessages[n] = s.docs.map(d => ({ id: d.id, ...plain(d.data()) })); }
+      catch (err) { out.data.classMessages[n] = { error: err.code || String(err) }; }
+    }
+    out.data.groupMessages = {};
+    for (const g of Array.isArray(out.data.groups) ? out.data.groups : []) {
+      try { const s = await getDocs(query(collection(db, "groups", g.id, "messages"), orderBy("createdAt", "desc"), limit(1000))); out.data.groupMessages[g.id] = s.docs.map(d => ({ id: d.id, ...plain(d.data()) })); }
+      catch (err) { out.data.groupMessages[g.id] = { error: err.code || String(err) }; }
+    }
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(out, null, 2)], { type: "application/json" }));
+    a.download = `portal-backup-${isoDay(new Date())}.json`;
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    b.disabled = false; toast("Резервну копію завантажено"); logAction("Завантажив резервну копію", "", "");
+  });
+
+  /* ===== Коди-запрошення (адміністратор) ===== */
+  function setupInvites() {
+    $("#inv-cls").innerHTML = classOptions(); $("#inv-cls").value = String(myClass() || 6);
+    portalSubs.push(onSnapshot(collection(db, "invites"), s => {
+      const box = $("#invites"); box.replaceChildren();
+      if (!s.size) { box.append(emptyEl("Кодів поки немає.")); return; }
+      s.docs.map(d => ({ d, v: d.data({ serverTimestamps: "estimate" }) })).sort((x, y) => (toDate(y.v.at) || 0) - (toDate(x.v.at) || 0)).forEach(({ d, v }) => {
+        const exp = toDate(v.expires), dead = (exp && exp < new Date()) || v.uses >= v.max;
+        const row = el("div", "invite");
+        const info = el("div"); info.append(el("code", null, d.id), el("div", "small muted", `${v.cls} клас · використано ${v.uses}/${v.max} · до ${fmtDay(exp)}`));
+        const acts = el("div", "acts");
+        if (dead) acts.append(pill(v.uses >= v.max ? "використано" : "прострочено", "bad"));
+        const copy = el("button", "btn ghost sm", "Копіювати"); copy.type = "button";
+        copy.addEventListener("click", () => navigator.clipboard.writeText(d.id).then(() => toast("Код скопійовано"), () => toast(d.id)));
+        acts.append(copy, confirmButton("Видалити", "btn ghost sm", async () => { await deleteDoc(d.ref); logAction("Видалив код-запрошення", "", d.id); }));
+        row.append(info, acts); box.append(row);
+      });
+    }, e => console.error(e)));
+  }
+  $("#f-invite").addEventListener("submit", async e => {
+    e.preventDefault();
+    const A = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    const code = Array.from(crypto.getRandomValues(new Uint32Array(6)), n => A[n % A.length]).join("");
+    const max = Math.min(60, Math.max(1, Number($("#inv-max").value) || 1)), days = Math.min(30, Math.max(1, Number($("#inv-days").value) || 7));
+    try {
+      await setDoc(doc(db, "invites", code), { cls: Number($("#inv-cls").value), max, uses: 0, expires: Timestamp.fromDate(new Date(Date.now() + days * 86400000)), by: me.uid, at: serverTimestamp() });
+      toast(`Код ${code} створено`); logAction(`Створив код-запрошення для ${$("#inv-cls").value} класу`, "", code);
+    } catch (ex) { console.error(ex); toast("Не вдалося створити код"); }
+  });
+  // Заявка з кодом: схвалюється одразу, якщо код дійсний; інакше — звичайна заявка.
+  async function submitApplication(uid, data) {
+    if (data.invite) {
+      try {
+        const b = writeBatch(db);
+        b.set(doc(db, "users", uid), { ...data, status: "approved" });
+        b.update(doc(db, "invites", data.invite), { uses: increment(1) });
+        await b.commit();
+        toast("Код прийнято — ласкаво просимо! 🎉"); return;
+      } catch (e) { console.error(e); toast("Код не підійшов — заявку надіслано на звичайне схвалення"); }
+      const { invite, ...rest } = data; data = rest;
+    }
+    await setDoc(doc(db, "users", uid), data);
+  }
+
   /* ===== Учні: порівняння списку класу з тими, хто на порталі ===== */
   let rosters = {}, roCls = null;
   function setupRoster() {
@@ -638,7 +776,15 @@ function start() {
   const COLOR_NAMES = { violet: "Фіолетовий", pink: "Рожевий", cyan: "Бірюзовий", green: "Зелений", yellow: "Жовтий", orange: "Помаранчевий", red: "Червоний", blue: "Синій" };
   const EMOJIS = ["😎", "🦊", "🐱", "🐶", "🐼", "🦁", "🐸", "🐧", "🦄", "🐲", "👾", "🤖", "👻", "🚀", "⚽", "🏀", "🎮", "🎧", "🎨", "📚", "🌟", "🔥", "🍕", "🌈"];
   const MONTHS = ["січня", "лютого", "березня", "квітня", "травня", "червня", "липня", "серпня", "вересня", "жовтня", "листопада", "грудня"];
-  let profs = {}, pfEmoji = null, pfColor = null, pfLoaded = false, lastDocs = null, lastKind = null;
+  let profs = {}, pfEmoji = null, pfColor = null, pfFrame = null, pfLoaded = false, lastDocs = null, lastKind = null, myQuizTotal = 0;
+  // Рамки аватарки: відкриваються за правильні відповіді в тесті дня (за весь час).
+  const FRAMES = [["none", "Без рамки", 0], ["bronze", "Бронзова", 1], ["silver", "Срібна", 5], ["gold", "Золота", 10], ["neon", "Неонова", 15], ["rainbow", "Веселкова", 20]];
+  const frameOpen = need => isAdmin || myQuizTotal >= need;
+  async function loadQuizTotal() {
+    try { const s = await getDocs(query(collection(db, "quiz"), where("uid", "==", me.uid), where("ok", "==", true))); myQuizTotal = s.size; }
+    catch (e) { console.error(e); }
+    if (inPortal) { renderProfileForm(); if (!$("#p-profile").hidden) renderProfileView(); }
+  }
   const pad2 = n => String(n).padStart(2, "0");
   function setupProfiles() {
     setupRoleBadges();
@@ -649,7 +795,7 @@ function start() {
       if (!pfLoaded) {
         const p = profs[me.uid] || {};
         // Не перетираємо те, що людина вже встигла обрати, поки профіль вантажився.
-        pfEmoji = pfEmoji || p.emoji || null; pfColor = pfColor || p.color || null;
+        pfEmoji = pfEmoji || p.emoji || null; pfColor = pfColor || p.color || null; pfFrame = pfFrame || p.frame || null;
         if (p.bio && !$("#pf-bio").value) $("#pf-bio").value = p.bio;
         if (p.bday && !$("#pf-day").value && !$("#pf-month").value) { const [m, d] = p.bday.split("-").map(Number); $("#pf-day").value = String(d); $("#pf-month").value = String(m); }
         pfLoaded = true;
@@ -657,7 +803,8 @@ function start() {
       renderProfileForm(); renderBday(); if (!$("#p-profile").hidden) renderProfileView();
       if (lastDocs) renderMessages(lastDocs, lastKind);
     }, e => console.error(e)));
-    portalSubs.push(() => { pfLoaded = false; pfEmoji = null; pfColor = null; profs = {}; lastDocs = null; });
+    portalSubs.push(() => { pfLoaded = false; pfEmoji = null; pfColor = null; pfFrame = null; profs = {}; lastDocs = null; myQuizTotal = 0; });
+    loadQuizTotal();
   }
   function renderProfileForm() {
     const pv = $("#pf-preview"); pv.textContent = `${pfEmoji || "🙂"} ${profile.name}`;
@@ -666,10 +813,20 @@ function start() {
     EMOJIS.forEach(e => { const b = el("button", null, e); b.type = "button"; b.setAttribute("aria-pressed", String(e === pfEmoji)); b.addEventListener("click", () => { pfEmoji = e; renderProfileForm(); }); g.append(b); });
     $("#pf-color").innerHTML = Object.keys(COLORS).map(k => `<button class="chip" type="button" data-c="${k}" aria-pressed="${k === pfColor}" style="color:${COLORS[k]}">● ${COLOR_NAMES[k]}</button>`).join("");
     $$("#pf-color .chip").forEach(c => c.addEventListener("click", () => { pfColor = c.dataset.c; renderProfileForm(); }));
+    $("#pf-frames").replaceChildren(...FRAMES.map(([k, t, need]) => {
+      const b = el("button"); b.type = "button"; b.dataset.f = k;
+      b.setAttribute("aria-pressed", String(k === (pfFrame || "none")));
+      b.disabled = !frameOpen(need);
+      b.title = frameOpen(need) ? t : `Відкриється після ${need} правильних відповідей у тесті дня (зараз ${myQuizTotal})`;
+      b.append(el("i", "fr-" + k), el("span", null, frameOpen(need) ? t : `🔒 ${need} ✓`));
+      b.addEventListener("click", () => { pfFrame = k; renderProfileForm(); });
+      return b;
+    }));
   }
   $("#pf-save").addEventListener("click", async () => {
     const d = Number($("#pf-day").value), m = Number($("#pf-month").value);
     const data = { emoji: pfEmoji || "🙂", color: pfColor || "violet" };
+    if (pfFrame && pfFrame !== "none") data.frame = pfFrame;
     const bio = $("#pf-bio").value.trim().slice(0, 150); if (bio) data.bio = bio;
     if (d && m) {
       if (d > new Date(2024, m, 0).getDate()) { toast("У цьому місяці немає такого дня"); return; }
@@ -708,6 +865,7 @@ function start() {
     $("#profile-box").hidden = !isMe;
     const ava = $("#pv-ava"); ava.textContent = p.emoji || "🙂";
     ava.style.background = COLORS[p.color] || "";
+    ava.className = "pv-ava" + (p.frame && p.frame !== "none" ? " fr-" + p.frame : "");
     $("#pv-name").textContent = d.name + (roleMark(uid) ? " " + roleMark(uid) : "");
     $("#pv-name").style.color = COLORS[p.color] || "";
     const badges = $("#pv-badges"); badges.replaceChildren();
@@ -727,12 +885,30 @@ function start() {
     const quizOk = quizMonthDocs.filter(q => { const r = q.data(); return r.uid === uid && r.ok; }).length;
     row("🏆 Тест дня (цей місяць)", `✓ ${quizOk}`);
     if (d.cls) row("🏫 Клас", `${d.cls} клас`);
+    $("#pv-achv").replaceChildren(...achievements(uid, p, quizOk).map(([i, t, hint]) => { const s = el("span", null, `${i} ${t}`); s.title = hint; return s; }));
     const acts = $("#pv-acts"); acts.replaceChildren();
     if (!isMe) {
       const chat = el("button", "btn", "💬 Створити чат"); chat.type = "button";
       chat.addEventListener("click", () => { openTab("chat"); openGroupForm("create"); gSel.add(uid); $("#g-name").value = `${profile.name.split(" ")[0]} і ${d.name.split(" ")[0]}`; renderPicker(); });
       acts.append(chat);
     }
+  }
+  // Досягнення: що людина вже зробила на порталі.
+  function achievements(uid, p, quizOk) {
+    const out = [["🌱", "На порталі", "Схвалений учасник порталу"]];
+    if (isAdminUid(uid)) out.push(["👑", "Адмін", "Адміністратор порталу"]);
+    if (modSet.has(uid)) out.push(["🛡", "Модератор", "Молодший модератор"]);
+    if (p.emoji && p.color) out.push(["🎨", "Стиліст", "Обрав аватарку й колір"]);
+    if (p.bio) out.push(["📝", "Про себе", "Заповнив «Про себе»"]);
+    if (p.bday) out.push(["🎂", "Іменинник", "Вказав день народження"]);
+    if (quizOk >= 1) out.push(["🧠", "Перша відповідь", "Правильна відповідь у тесті дня"]);
+    if (quizOk >= 5) out.push(["🔥", "Розумник", "5 правильних відповідей за місяць"]);
+    if (quizOk >= 15) out.push(["🚀", "Геній", "15 правильних відповідей за місяць"]);
+    const score = {}; quizMonthDocs.forEach(d => { const r = d.data(); if (r.ok) score[r.uid] = (score[r.uid] || 0) + 1; });
+    const cls = dir[uid] && dir[uid].cls, best = Object.entries(score).filter(([u]) => dir[u] && dir[u].cls === cls).sort((a, b) => b[1] - a[1])[0];
+    if (cls && best && best[0] === uid) out.push(["🏆", "Чемпіон класу", "Перше місце в тесті дня цього місяця"]);
+    if (p.frame && p.frame !== "none") out.push(["🖼", "Рамка", "Має рамку аватарки"]);
+    return out;
   }
   $("#pv-back").addEventListener("click", () => { pvUid = null; renderProfileView(); });
 
@@ -787,34 +963,213 @@ function start() {
       toast("Скаргу надіслано модераторам");
     } catch (e) { console.error(e); toast("Не вдалося надіслати скаргу"); }
   }
+  /* ===== Повідомлення: відповіді, редагування, стікери, згадки, ✓✓, закріплення ===== */
+  let replyTo = null, msgEdit = null, chatQuery = "", othersReadAt = 0, typers = [], lastTypingSent = 0;
+  let extrasUnsubs = [], readWriteAt = {}, mentionFlag = {};
+  const STICKERS = ["😂", "🤣", "😍", "😎", "🥳", "😭", "😡", "🤯", "👍", "👎", "🙏", "👏", "🔥", "💯", "❤️", "💔", "🎉", "⚽", "🎮", "📚", "🍕", "🐱", "🦄", "🚀"];
+  const bigEmoji = t => /\p{Extended_Pictographic}/u.test(t) && /^(?:\p{Extended_Pictographic}|\p{Emoji_Modifier}|️|‍|\s)+$/u.test(t) && [...t.replace(/\s/g, "")].length <= 8;
+  function mentionsMe(text) {
+    const t = String(text || "").toLowerCase();
+    return nameTokens(profile.name).some(tok => tok.length > 1 && t.includes("@" + tok));
+  }
+  function richText(text) {
+    const frag = document.createDocumentFragment(), re = /@[\p{L}'’ʼ-]+(?:\s[\p{L}'’ʼ-]+)?/gu;
+    let last = 0, m;
+    while ((m = re.exec(text))) {
+      if (m.index > last) frag.append(text.slice(last, m.index));
+      frag.append(el("span", "mention", m[0])); last = m.index + m[0].length;
+    }
+    if (last < text.length) frag.append(text.slice(last));
+    return frag;
+  }
+  function jumpTo(id) {
+    const t = document.getElementById("m-" + id);
+    if (!t) { toast("Це повідомлення вже далеко вгорі"); return; }
+    t.scrollIntoView({ block: "center", behavior: "smooth" });
+    t.classList.add("flash"); setTimeout(() => t.classList.remove("flash"), 1600);
+  }
+  function startReply(id, m) {
+    replyTo = { id, name: String(m.name || "").slice(0, 60), text: String((m.opts ? "📊 " : "") + (m.text || "")).slice(0, 100) };
+    $("#reply-text").textContent = `↩ ${replyTo.name}: ${replyTo.text}`;
+    $("#reply-bar").hidden = false; $("#chat-text").focus();
+  }
+  function clearReply() { replyTo = null; $("#reply-bar").hidden = true; }
+  $("#reply-x").addEventListener("click", clearReply);
+  function editBox(d, m) {
+    const box = el("div", "edit-box"), inp = el("input");
+    inp.maxLength = 500; inp.value = msgEdit.draft; inp.setAttribute("aria-label", "Новий текст");
+    inp.addEventListener("input", () => { msgEdit.draft = inp.value; });
+    const acts = el("div", "acts");
+    const save = el("button", "btn sm", "Зберегти"); save.type = "button";
+    const cancel = el("button", "btn ghost sm", "Скасувати"); cancel.type = "button";
+    save.addEventListener("click", async () => {
+      const t = inp.value.trim(); if (!t) return;
+      save.disabled = true;
+      try { await updateDoc(d.ref, { text: t.slice(0, 500), edited: true }); msgEdit = null; if (lastDocs) renderMessages(lastDocs, lastKind); }
+      catch (e) { console.error(e); toast(isMutedNow() ? "Ти в муті — редагувати не можна" : "Не вдалося змінити"); save.disabled = false; }
+    });
+    cancel.addEventListener("click", () => { msgEdit = null; renderMessages(lastDocs, lastKind); });
+    inp.addEventListener("keydown", e => { if (e.key === "Enter") save.click(); if (e.key === "Escape") cancel.click(); });
+    acts.append(save, cancel); box.append(inp, acts);
+    setTimeout(() => inp.focus(), 0);
+    return box;
+  }
   function renderMessages(docs, kind) {
     lastDocs = docs; lastKind = kind;
     const box = $("#messages");
     const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 120;
     box.replaceChildren();
-    if (!docs.length) { box.append(emptyEl("Тут ще тихо. Напиши перше повідомлення!")); return; }
+    const q = chatQuery.trim().toLowerCase();
+    const list = q ? docs.filter(d => { const m = d.data(); return String(m.text || "").toLowerCase().includes(q) || String(m.name || "").toLowerCase().includes(q); }) : docs;
+    if (q) box.append(el("div", "day-sep", `Знайдено: ${list.length}`));
+    if (!list.length) { box.append(emptyEl(q ? "Нічого не знайдено." : "Тут ще тихо. Напиши перше повідомлення!")); return; }
     let lastDay = "";
-    docs.forEach(d => {
+    list.forEach(d => {
       const m = d.data({ serverTimestamps: "estimate" });
-      const when = toDate(m.createdAt);
-      const day = fmtDay(when);
+      const when = toDate(m.createdAt), day = fmtDay(when);
       if (day && day !== lastDay) { box.append(el("div", "day-sep", day)); lastDay = day; }
-      const mine = m.uid === me.uid;
-      const wrap = el("div", "msg" + (mine ? " mine" : "") + (m.opts ? " is-poll" : ""));
+      const mine = m.uid === me.uid, big = !m.opts && bigEmoji(m.text || "");
+      const wrap = el("div", "msg" + (mine ? " mine" : "") + (m.opts ? " is-poll" : "") + (big ? " big" : "") + (!mine && mentionsMe(m.text) ? " mentions-me" : ""));
+      wrap.id = "m-" + d.id;
       const meta = el("div", "meta");
       meta.append(nameEl(m.uid, m.name, mine));
       if (kind === "group" && !mine && dir[m.uid] && dir[m.uid].cls) meta.append(el("span", null, `${dir[m.uid].cls} клас`));
       if (m.role && m.role !== "student") meta.append(el("span", null, ROLE[m.role]));
-      meta.append(el("span", null, fmtTime(when)));
+      meta.append(el("span", m.edited ? "edited" : null, fmtTime(when) + (m.edited ? " · змінено" : "")));
+      if (mine) { const tk = el("span", "ticks"); tk.dataset.at = when ? String(when.getTime()) : ""; meta.append(tk); }
+      const act = (label, fn, title) => { const b = el("button", "del", label); b.type = "button"; if (title) b.title = title; b.addEventListener("click", fn); meta.append(b); };
+      act("відповісти", () => startReply(d.id, m));
+      if (mine && !m.opts) act("редагувати", () => { msgEdit = { id: d.id, draft: m.text }; renderMessages(lastDocs, lastKind); });
+      if ((isAdmin || isMod) && (kind === "class" || isAdmin)) act("📌", () => pinMessage(d.id, m), "Закріпити");
       if (!mine) meta.append(confirmButton("поскаржитися", "del", () => report(d, m)));
       if (mine || isAdmin || (isMod && kind === "class")) meta.append(confirmButton("видалити", "del", async () => {
         await deleteDoc(d.ref);
         if (!mine) logAction("Видалив повідомлення", m.uid, m.name);
       }));
-      wrap.append(meta, m.opts ? renderPoll(d, m) : el("div", "txt", m.text), renderReacts(d, m));
+      wrap.append(meta);
+      if (m.reply) {
+        const qd = el("div", "quote"); qd.append(el("b", null, m.reply.name + ": "), m.reply.text);
+        qd.addEventListener("click", () => jumpTo(m.reply.id)); wrap.append(qd);
+      }
+      if (m.opts) wrap.append(renderPoll(d, m));
+      else if (msgEdit && msgEdit.id === d.id) wrap.append(editBox(d, m));
+      else { const t = el("div", "txt"); t.append(richText(m.text || "")); wrap.append(t); }
+      wrap.append(renderReacts(d, m));
       box.append(wrap);
     });
-    if (nearBottom) box.scrollTop = box.scrollHeight;
+    updateTicks();
+    if (nearBottom && !q && !msgEdit) box.scrollTop = box.scrollHeight;
+  }
+  // ✓ — надіслано, ✓✓ — хтось інший уже прочитав. Оновлюємо на місці, щоб не збивати кнопки.
+  function updateTicks() {
+    $$("#messages .ticks").forEach(t => {
+      const read = !!t.dataset.at && othersReadAt >= Number(t.dataset.at);
+      t.classList.toggle("read", read); t.textContent = read ? "✓✓" : "✓";
+      t.title = read ? "Прочитано" : "Надіслано";
+    });
+  }
+  $("#chat-search").addEventListener("input", e => { chatQuery = e.target.value; if (lastDocs) renderMessages(lastDocs, lastKind); });
+
+  // Закріплене повідомлення, «друкує…» і хто прочитав — для відкритого чату.
+  function setupChatExtras() {
+    const t = setInterval(renderTyping, 2000);
+    portalSubs.push(() => { clearInterval(t); extrasUnsubs.forEach(u => u()); extrasUnsubs = []; });
+  }
+  function watchExtras(key) {
+    extrasUnsubs.forEach(u => u()); extrasUnsubs = [];
+    clearReply(); msgEdit = null; chatQuery = ""; $("#chat-search").value = ""; othersReadAt = 0; typers = []; renderTyping();
+    $("#stickers").hidden = true; $("#mentions").hidden = true;
+    if (!key) return;
+    extrasUnsubs.push(onSnapshot(doc(db, "pins", key), s => {
+      const bar = $("#pin-bar");
+      if (!s.exists()) { bar.hidden = true; return; }
+      const p = s.data();
+      bar.hidden = false;
+      $("#pin-go").textContent = `📌 ${p.name}: ${p.text}`;
+      $("#pin-go").onclick = () => jumpTo(p.msgId);
+      $("#pin-x").hidden = !((isAdmin || isMod) && (key.startsWith("c") || isAdmin));
+      $("#pin-x").onclick = async () => { try { await deleteDoc(doc(db, "pins", key)); logAction("Відкріпив повідомлення", "", p.name); } catch (e) { console.error(e); toast("Не вдалося"); } };
+    }, () => { $("#pin-bar").hidden = true; }));
+    extrasUnsubs.push(onSnapshot(collection(db, "typing", key, "users"), s => {
+      typers = s.docs.filter(x => x.id !== me.uid).map(x => { const v = x.data({ serverTimestamps: "estimate" }); return { name: v.name, at: toDate(v.at) }; });
+      renderTyping();
+    }, () => {}));
+    extrasUnsubs.push(onSnapshot(query(collection(db, "reads"), where("chat", "==", key)), s => {
+      othersReadAt = 0;
+      s.docs.forEach(x => { const v = x.data({ serverTimestamps: "estimate" }); if (v.uid !== me.uid) { const t = toDate(v.at); if (t) othersReadAt = Math.max(othersReadAt, t.getTime()); } });
+      updateTicks();
+    }, () => {}));
+  }
+  function renderTyping() {
+    const now = Date.now(), act = typers.filter(t => t.at && now - t.at.getTime() < 6000).map(t => String(t.name).split(" ").pop());
+    $("#typing").textContent = !act.length ? "" : act.length === 1 ? `${act[0]} друкує…` : act.length === 2 ? `${act[0]} і ${act[1]} друкують…` : "Кілька людей друкують…";
+  }
+  function sendTyping() {
+    const k = curKey(); if (!k || Date.now() - lastTypingSent < 3000 || isMutedNow()) return;
+    lastTypingSent = Date.now();
+    setDoc(doc(db, "typing", k, "users", me.uid), { at: serverTimestamp(), name: profile.name }).catch(() => {});
+  }
+  let readTimer = null;
+  function writeRead(k) {
+    if (!k || k !== curKey()) return;
+    // Не частіше разу на 4 с, але останнє прочитання все одно записуємо.
+    const wait = 4000 - (Date.now() - (readWriteAt[k] || 0));
+    if (wait > 0) { if (!readTimer) readTimer = setTimeout(() => { readTimer = null; if (isViewing(k)) writeRead(k); }, wait); return; }
+    readWriteAt[k] = Date.now();
+    setDoc(doc(db, "reads", `${k}_${me.uid}`), { chat: k, uid: me.uid, at: serverTimestamp() }).catch(() => {});
+  }
+  async function pinMessage(id, m) {
+    const k = curKey(); if (!k) return;
+    try {
+      await setDoc(doc(db, "pins", k), { msgId: id, text: String((m.opts ? "📊 " : "") + (m.text || "")).slice(0, 300), name: String(m.name || "").slice(0, 60), by: me.uid, at: serverTimestamp() });
+      toast("Повідомлення закріплено"); logAction("Закріпив повідомлення", m.uid, m.name);
+    } catch (e) { console.error(e); toast("Не вдалося закріпити"); }
+  }
+
+  // Стікери
+  $("#b-sticker").addEventListener("click", () => {
+    const box = $("#stickers");
+    if (!box.hidden) { box.hidden = true; return; }
+    box.replaceChildren(...STICKERS.map(s => { const b = el("button", null, s); b.type = "button"; b.addEventListener("click", () => { box.hidden = true; sendText(s); }); return b; }));
+    box.hidden = false;
+  });
+
+  // Підказки @згадок
+  function mentionCandidates() {
+    if (!current) return [];
+    if (current.kind === "class") return Object.entries(dir).filter(([id, p]) => id !== me.uid && p.cls === current.cls).map(([, p]) => p.name);
+    const g = groups.find(x => x.id === current.id);
+    return g ? g.members.filter(u => u !== me.uid && dir[u]).map(u => dir[u].name) : [];
+  }
+  $("#chat-text").addEventListener("input", e => {
+    const inp = e.target;
+    if (inp.value.trim()) sendTyping();
+    const before = inp.value.slice(0, inp.selectionStart), m = before.match(/@([\p{L}'’ʼ-]*)$/u), box = $("#mentions");
+    if (!m) { box.hidden = true; return; }
+    const qq = m[1].toLowerCase();
+    const list = mentionCandidates().filter(n => nameTokens(n).some(t => t.startsWith(qq))).slice(0, 6);
+    if (!list.length) { box.hidden = true; return; }
+    box.replaceChildren(...list.map(n => {
+      const b = el("button", null, "@" + n); b.type = "button";
+      b.addEventListener("click", () => {
+        const start = before.length - m[0].length;
+        inp.value = inp.value.slice(0, start) + "@" + n + " " + inp.value.slice(inp.selectionStart);
+        box.hidden = true; inp.focus();
+      });
+      return b;
+    }));
+    box.hidden = false;
+  });
+
+  async function sendText(text) {
+    if (!text || !current) return false;
+    const col = current.kind === "class" ? collection(db, "classes", String(current.cls), "messages") : collection(db, "groups", current.id, "messages");
+    const data = { uid: me.uid, name: profile.name, role: profile.role, text: text.slice(0, 500), createdAt: serverTimestamp() };
+    const rp = replyTo;
+    if (rp) data.reply = rp;
+    clearReply();
+    try { await addDoc(col, data); scrollChat(true); return true; }
+    catch (ex) { console.error(ex); if (rp) startReply(rp.id, { name: rp.name, text: rp.text }); toast(isMutedNow() ? "Ти в муті — зараз не можна писати" : "Повідомлення не надіслано"); return false; }
   }
 
   /* ----- Створення опитування ----- */
@@ -948,6 +1303,7 @@ function start() {
   function markRead(k) {
     if (!k) return;
     store.set(lrKey(k), Date.now());
+    if (isViewing(k)) writeRead(k);
     if (unread[k]) { unread[k] = 0; renderUnread(); }
   }
   function setupUnread() {
@@ -971,9 +1327,11 @@ function start() {
       watch[k] = onSnapshot(query(col, orderBy("createdAt", "desc"), limit(50)), s => {
         if (isViewing(k)) { markRead(k); first = false; return; }
         const lr = store.get(lrKey(k), 0);
-        const n = s.docs.filter(d => { const m = d.data({ serverTimestamps: "estimate" }), t = toDate(m.createdAt); return m.uid !== me.uid && t && t.getTime() > lr; }).length;
+        const fresh = s.docs.filter(d => { const m = d.data({ serverTimestamps: "estimate" }), t = toDate(m.createdAt); return m.uid !== me.uid && t && t.getTime() > lr; });
+        const n = fresh.length, ment = fresh.filter(d => mentionsMe(d.data().text)).length;
         const grew = !first && n > (unread[k] || 0);
-        unread[k] = n; first = false; renderUnread();
+        if (!first && ment > (mentionFlag[k] || 0)) toast("📣 Тебе згадали в чаті");
+        unread[k] = n; mentionFlag[k] = ment; first = false; renderUnread();
         if (grew) ping();
       }, e => console.error(e));
     });
@@ -1000,8 +1358,15 @@ function start() {
   let quizUnsub = null;
   const isoDay = d => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
   async function setupQuiz() {
-    quizUnsub && quizUnsub();
-    const mc = myClass() || 6, qs = QUIZ[mc] || QUIZ[6], now = new Date(), day = isoDay(now), month = day.slice(0, 7);
+    quizUnsub && quizUnsub(); quizUnsub = null;
+    const run = setupQuiz.run = (setupQuiz.run || 0) + 1;
+    const mc = myClass() || 6, now = new Date(), day = isoDay(now), month = day.slice(0, 7);
+    let qs = QUIZ[mc] || QUIZ[6];
+    try {
+      const s = await getDocs(query(collection(db, "quizbank"), where("cls", "==", mc)));
+      const extra = s.docs.slice().sort((a, b) => a.id.localeCompare(b.id)).map(d => d.data()).filter(x => Array.isArray(x.o) && x.o[x.a] != null);
+      qs = qs.concat(extra);
+    } catch (e) { console.error(e); }
     const doy = Math.floor((now - new Date(now.getFullYear(), 0, 0)) / 86400000);
     const q = qs[doy % qs.length], ref = doc(db, "quiz", `${day}_${me.uid}`);
     $("#qz-cls").textContent = `Тест дня · ${mc} клас`;
@@ -1015,7 +1380,7 @@ function start() {
           $$("#qz-opts button").forEach(x => { x.disabled = true; });
           try {
             await setDoc(ref, { uid: me.uid, name: profile.name, cls: mc, day, month, ok: i === q.a, at: serverTimestamp() });
-            show(i);
+            show(i); if (i === q.a) loadQuizTotal();
           } catch (e) { console.error(e); toast("Не вдалося зберегти відповідь"); show(null); }
         });
         box.append(b);
@@ -1024,8 +1389,9 @@ function start() {
     };
     show(null);
     try { const s = await getDoc(ref); if (s.exists()) show(s.data().ok ? q.a : (q.a + 1) % q.o.length); } catch (e) { console.error(e); }
+    if (run !== setupQuiz.run) return;
     quizUnsub = onSnapshot(query(collection(db, "quiz"), where("month", "==", month), limit(1000)), s => {
-      quizMonthDocs = s.docs;
+      quizMonthDocs = s.docs; if (isAdmin) renderStats();
       const score = {};
       s.docs.forEach(d => { const r = d.data(); if (r.cls === mc && r.ok) { score[r.uid] = score[r.uid] || { name: r.name, n: 0 }; score[r.uid].n++; } });
       const top = Object.entries(score).sort((a, b) => b[1].n - a[1].n).slice(0, 10);
@@ -1040,12 +1406,8 @@ function start() {
     e.preventDefault();
     const input = $("#chat-text"), text = input.value.trim();
     if (!text || !current) return;
-    const col = current.kind === "class" ? collection(db, "classes", String(current.cls), "messages") : collection(db, "groups", current.id, "messages");
-    input.value = "";
-    try {
-      await addDoc(col, { uid: me.uid, name: profile.name, role: profile.role, text: text.slice(0, 500), createdAt: serverTimestamp() });
-      scrollChat(true);
-    } catch (ex) { console.error(ex); input.value = text; toast("Повідомлення не надіслано"); }
+    input.value = ""; $("#mentions").hidden = true;
+    if (!(await sendText(text))) input.value = text;
   });
 
   /* ----- Створення чату й запрошення ----- */
@@ -1142,24 +1504,33 @@ function start() {
     portalSubs.push(onSnapshot(query(collection(db, "announcements"), orderBy("createdAt", "desc"), limit(100)),
       s => { news = s.docs; renderNews(); },
       e => { console.error(e); $("#news-list").replaceChildren(emptyEl("Не вдалося завантажити оголошення.")); }));
+    // Відкладені оголошення з'являються самі, коли настає їхній час.
+    const t = setInterval(() => { if (news.some(d => { const w = toDate(d.data().showAt); return w && w <= new Date() && w > new Date(Date.now() - 61000); })) renderNews(); }, 30000);
+    portalSubs.push(() => clearInterval(t));
   }
+  const canSchedule = () => isAdmin || isMod || profile.role === "teacher";
+  const newsAt = n => toDate(n.showAt) || toDate(n.createdAt);
   function setupNewsForm() {
     const sel = $("#n-cls");
     if (canPickClass()) { sel.innerHTML = classOptions(true); sel.disabled = false; }
     else { sel.innerHTML = `<option value="${myClass()}">${myClass()} клас (твій)</option>`; sel.disabled = true; }
     if (!myClass() && newsFilter === "mine") newsFilter = "all";
+    $("#n-when-wrap").hidden = !canSchedule();
   }
   function renderNews() {
     const mc = myClass();
     const filters = [...(mc ? [["mine", "Мій клас"]] : []), ["school", "Уся школа"], ["other", mc ? "Інші класи" : "Класи"], ["all", "Усі"]];
     $("#news-filter").innerHTML = filters.map(([k, t]) => `<button class="chip" type="button" data-f="${k}" aria-pressed="${k === newsFilter}">${t}</button>`).join("");
     $$("#news-filter .chip").forEach(c => c.addEventListener("click", () => { newsFilter = c.dataset.f; renderNews(); }));
+    const now = new Date();
     const list = news.filter(d => {
-      const c = d.data().cls;
+      const n = d.data(), c = n.cls, w = toDate(n.showAt);
+      if (w && w > now && n.uid !== me.uid && !isAdmin && !isMod) return false;
       return newsFilter === "all" || (newsFilter === "mine" && c === mc) || (newsFilter === "school" && c === 0) || (newsFilter === "other" && c !== 0 && c !== mc);
     });
     const box = $("#news-list"); box.replaceChildren();
     if (!list.length) { box.append(emptyEl("Оголошень поки немає.")); return; }
+    list.sort((a, b) => (newsAt(b.data({ serverTimestamps: "estimate" })) || 0) - (newsAt(a.data({ serverTimestamps: "estimate" })) || 0));
     list.forEach(d => {
       const n = d.data({ serverTimestamps: "estimate" });
       const card = el("article", "card post");
@@ -1167,7 +1538,10 @@ function start() {
       top.append(el("h3", null, n.title), n.cls === 0 ? pill("Уся школа", "info") : pill(`${n.cls} клас` + (n.cls === mc ? " · твій" : ""), n.cls === mc ? "ok" : "warn"));
       const by = el("div", "by");
       const author = el("span", null, `${n.name} · ${ROLE[n.role] || ""}`);
-      const right = el("span"); right.append(`${fmtDay(toDate(n.createdAt))} ${fmtTime(toDate(n.createdAt))}`);
+      const at = newsAt(n), later = toDate(n.showAt) && toDate(n.showAt) > now;
+      const right = el("span");
+      if (later) right.append(pill(`⏰ вийде ${fmtDay(at)} о ${fmtTime(at)}`, "warn"));
+      else right.append(`${fmtDay(at)} ${fmtTime(at)}`);
       by.append(author, right);
       card.append(top, el("p", "txt", n.text), by);
       if (n.uid === me.uid || isAdmin || isMod) { const a = el("div", "acts"); a.append(confirmButton("Видалити", "btn ghost sm", async () => { await deleteDoc(d.ref); if (n.uid !== me.uid) logAction("Видалив оголошення", n.uid, n.name); })); card.append(a); }
@@ -1179,10 +1553,18 @@ function start() {
     const title = $("#n-title").value.trim(), text = $("#n-text").value.trim(), cls = Number($("#n-cls").value);
     if (title.length < 2) { formErr(f, "Додай заголовок."); return; }
     if (!text) { formErr(f, "Додай текст оголошення."); return; }
+    const data = { cls, title, text, uid: me.uid, name: profile.name, role: profile.role, createdAt: serverTimestamp() };
+    const when = canSchedule() && $("#n-when").value ? new Date($("#n-when").value) : null;
+    if (when) {
+      if (isNaN(when) || when < new Date(Date.now() + 60000)) { formErr(f, "Час публікації має бути в майбутньому."); return; }
+      if (when > new Date(Date.now() + 30 * 86400000)) { formErr(f, "Можна запланувати щонайбільше на 30 днів уперед."); return; }
+      data.showAt = Timestamp.fromDate(when);
+    }
     const btn = $("button[type=submit]", f); btn.disabled = true;
     try {
-      await addDoc(collection(db, "announcements"), { cls, title, text, uid: me.uid, name: profile.name, role: profile.role, createdAt: serverTimestamp() });
-      $("#n-title").value = ""; $("#n-text").value = ""; toast("Оголошення опубліковано");
+      await addDoc(collection(db, "announcements"), data);
+      $("#n-title").value = ""; $("#n-text").value = ""; $("#n-when").value = "";
+      toast(when ? `Оголошення вийде ${fmtDay(when)} о ${fmtTime(when)}` : "Оголошення опубліковано");
       newsFilter = cls === 0 ? "school" : cls === myClass() ? "mine" : "other"; renderNews();
     } catch (ex) { console.error(ex); formErr(f, "Не вдалося опублікувати. Можна писати лише для свого класу."); }
     finally { btn.disabled = false; }
