@@ -423,3 +423,33 @@ textarea{resize:vertical; min-height:80px}
 :root[data-season="valentine"]{--accent:#FF5C9D; --accent-ink:#2A0012}
 .fr-champ{box-shadow:0 0 0 4px #FFC93C, 0 0 0 8px #9C8CFF, 0 0 26px #FFC93C}
 .champ{background:color-mix(in srgb,var(--accent) 16%,var(--surface2)); border-radius:10px; padding:8px 10px; margin:0}
+
+/* ===== Міні-ігри ===== */
+.mg-card{grid-column:1 / -1}
+.mg-head{display:flex; justify-content:space-between; align-items:baseline; gap:8px; flex-wrap:wrap}
+.mg-head h3{margin:0}
+.mg-stage{display:grid; gap:10px; justify-items:center; text-align:center}
+.mg-stage > .row{justify-content:center}
+.mg-info{margin:0; font-weight:600; min-height:1.4em}
+.mg-canvas{width:min(320px,100%); height:auto; aspect-ratio:1; border-radius:12px; touch-action:none}
+.dpad{display:grid; grid-template-columns:repeat(3,48px); grid-template-areas:". up ." "left down right"; gap:6px}
+.dpad .icon-btn{width:48px; height:48px; font-size:1.2rem}
+.dpad [data-d=up]{grid-area:up} .dpad [data-d=left]{grid-area:left} .dpad [data-d=down]{grid-area:down} .dpad [data-d=right]{grid-area:right}
+.memo{display:grid; grid-template-columns:repeat(4,1fr); gap:8px; width:min(320px,100%)}
+.memo-card{aspect-ratio:1; font-size:1.8rem; border-radius:12px; border:1px solid var(--line); background:var(--surface2); cursor:pointer; color:var(--fg)}
+.memo-card.open{background:color-mix(in srgb,var(--violet) 25%,var(--surface2))}
+.memo-card.done{background:color-mix(in srgb,var(--ok) 30%,var(--surface2)); cursor:default}
+.g2048{display:grid; grid-template-columns:repeat(4,1fr); gap:6px; width:min(320px,100%); padding:6px; background:var(--line); border-radius:12px; touch-action:none}
+.tile{aspect-ratio:1; display:grid; place-items:center; border-radius:8px; background:var(--surface2); font-family:var(--f-mono); font-weight:700; font-size:1.3rem; color:#1A1033}
+.t0{color:transparent}
+.t2{background:#EDE7FF} .t4{background:#D9CCFF} .t8{background:#FFC93C} .t16{background:#FF9F43} .t32{background:#FF7A82} .t64{background:#FF4D6D; color:#fff}
+.t128{background:#4FD3EA} .t256{background:#2EC4B6} .t512{background:#4FD08F} .t1024{background:#9C8CFF; color:#fff; font-size:1.05rem} .t2048,.t4096{background:#FF2BD6; color:#fff; font-size:1.05rem}
+.react-pad{width:100%; min-height:180px; border-radius:16px; border:0; font-size:1.4rem; font-weight:700; cursor:pointer; background:var(--surface2); color:var(--fg); touch-action:manipulation}
+.react-pad.wait{background:#B3263E; color:#fff} .react-pad.go{background:#1F9D55; color:#fff} .react-pad.early{background:var(--warn); color:#2A1600}
+input.bad{border-color:var(--bad); background:color-mix(in srgb,var(--bad) 20%,var(--surface))}
+.word-shown{font-family:var(--f-mono); font-size:clamp(1rem,5.2vw,1.6rem); letter-spacing:0; white-space:nowrap}
+.word-keys{display:grid; grid-template-columns:repeat(auto-fill,minmax(36px,1fr)); gap:5px; width:100%}
+.word-keys .key{height:38px; border-radius:8px; border:1px solid var(--line); background:var(--surface2); color:var(--fg); font-weight:700; cursor:pointer}
+.word-keys .key:disabled{opacity:.35; cursor:default}
+.word-keys .key.hit{opacity:1; background:color-mix(in srgb,var(--ok) 35%,var(--surface2))}
+.rps .btn{font-size:1rem}

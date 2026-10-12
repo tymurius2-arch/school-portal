@@ -13,6 +13,7 @@ import { HINTS } from "./hints.js";
 import { TEXTBOOKS } from "./textbooks.js";
 import { QUIZ } from "./quiz.js";
 import { clean } from "./profanity.js";
+import { setupMiniGames } from "./minigames.js";
 
 /* ---------- Дрібниці ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -37,10 +38,16 @@ const fmtDay = d => d ? d.toLocaleDateString("uk-UA", { day: "numeric", month: "
 function pill(text, cls) { return el("span", "pill " + cls, text); }
 function emptyEl(text) { return el("div", "empty", text); }
 /* Кнопка, що просить підтвердження другим натисканням */
-function confirmButton(label, cls, action) {
+// key — щоб «Точно?» не скидалось, коли список перемальовується (наприклад, у чаті).
+const armedKeys = new Map();
+function confirmButton(label, cls, action, key) {
   const b = el("button", cls, label); b.type = "button";
+  const disarm = () => { b.dataset.armed = ""; b.textContent = label; };
+  const left = key ? (armedKeys.get(key) || 0) - Date.now() : 0;
+  if (left > 0) { b.dataset.armed = "1"; b.textContent = "Точно?"; setTimeout(disarm, left); }
   b.addEventListener("click", async () => {
-    if (b.dataset.armed !== "1") { b.dataset.armed = "1"; b.textContent = "Точно?"; setTimeout(() => { b.dataset.armed = ""; b.textContent = label; }, 3000); return; }
+    if (b.dataset.armed !== "1") { b.dataset.armed = "1"; b.textContent = "Точно?"; if (key) armedKeys.set(key, Date.now() + 3000); setTimeout(disarm, 3000); return; }
+    if (key) armedKeys.delete(key);
     b.disabled = true;
     try { await action(); } catch (e) { console.error(e); toast("Не вдалося. Спробуй ще раз."); b.disabled = false; }
   });
@@ -1099,6 +1106,7 @@ function start() {
     $("#guess-n").select();
   });
   newGuess();
+  setupMiniGames($("#minigames"), { store, toast });
 
   /* ===== Дошка для малювання класу ===== */
   const BD_COLORS = ["#1A1A2E", "#FF4D4D", "#FF9F1C", "#FFD60A", "#2EC4B6", "#3A86FF", "#8338EC", "#FF5FA2", "#6B4423"];
@@ -1677,11 +1685,11 @@ function start() {
       act("відповісти", () => startReply(d.id, m));
       if (mine && !m.opts && !(m.media && m.media.kind === "audio")) act("редагувати", () => { msgEdit = { id: d.id, draft: m.text }; renderMessages(lastDocs, lastKind); });
       if ((isAdmin || isMod) && (kind === "class" || (isAdmin && kind === "group"))) act("📌", () => pinMessage(d.id, m), "Закріпити");
-      if (!mine) meta.append(confirmButton("поскаржитися", "del", () => report(d, m)));
+      if (!mine) meta.append(confirmButton("поскаржитися", "del", () => report(d, m), "rep:" + d.id));
       if (mine || (kind !== "dm" && (isAdmin || (isMod && kind === "class")))) meta.append(confirmButton("видалити", "del", async () => {
         await deleteDoc(d.ref);
         if (!mine) logAction("Видалив повідомлення", m.uid, m.name);
-      }));
+      }, "del:" + d.id));
       wrap.append(meta);
       if (m.reply) {
         const qd = el("div", "quote"); qd.append(el("b", null, m.reply.name + ": "), m.reply.text);
