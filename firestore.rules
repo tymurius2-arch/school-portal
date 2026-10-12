@@ -34,7 +34,9 @@ service cloud.firestore {
     }
     // Нове повідомлення: текст або опитування (opts — від 2 до 6 варіантів).
     function validMessage(d) {
-      return d.keys().hasOnly(['uid', 'name', 'role', 'text', 'createdAt', 'opts', 'reply'])
+      return d.keys().hasOnly(['uid', 'name', 'role', 'text', 'createdAt', 'opts', 'reply', 'media'])
+        && (!('media' in d) || (d.media is map && d.media.keys().hasOnly(['kind', 'id', 'dur'])
+                                && d.media.kind in ['img', 'audio'] && shortText(d.media.id, 1, 40)))
         && (!('reply' in d) || (d.reply is map && d.reply.keys().hasOnly(['id', 'name', 'text'])
                                 && shortText(d.reply.id, 1, 40) && shortText(d.reply.name, 0, 60)
                                 && shortText(d.reply.text, 0, 100)))
@@ -44,6 +46,15 @@ service cloud.firestore {
         && shortText(d.text, 1, 500)
         && (!('opts' in d) || (d.opts is list && d.opts.size() >= 2 && d.opts.size() <= 6))
         && d.createdAt == request.time;
+    }
+    // Фото чи голосове: окремий документ поруч із повідомленнями (до ~400 КБ).
+    function validMedia(d) {
+      return d.keys().hasOnly(['uid', 'kind', 'data', 'dur', 'at'])
+        && d.uid == request.auth.uid
+        && ((d.kind == 'img' && d.data is string && d.data.size() <= 420000 && d.data[0:11] == 'data:image/')
+            || (d.kind == 'audio' && d.data is string && d.data.size() <= 420000 && d.data[0:11] == 'data:audio/'))
+        && (!('dur' in d) || (d.dur is number && d.dur >= 0 && d.dur <= 120))
+        && d.at == request.time;
     }
     // Автор може виправити текст свого повідомлення (не опитування).
     function editOk() {
@@ -182,7 +193,7 @@ service cloud.firestore {
       allow read: if approved() || isAdmin();
       allow write: if (approved() || isAdmin()) && request.auth.uid == uid
         && request.resource.data.keys().hasOnly(['emoji', 'color', 'bday', 'bio', 'frame'])
-        && (!('frame' in request.resource.data) || request.resource.data.frame in ['none', 'bronze', 'silver', 'gold', 'neon', 'rainbow'])
+        && (!('frame' in request.resource.data) || request.resource.data.frame in ['none', 'bronze', 'silver', 'gold', 'neon', 'rainbow', 'champ'])
         && (!('bio' in request.resource.data) || shortText(request.resource.data.bio, 0, 150))
         && shortText(request.resource.data.emoji, 1, 8)
         && request.resource.data.color in ['violet', 'pink', 'cyan', 'green', 'yellow', 'orange', 'red', 'blue']
@@ -228,6 +239,7 @@ service cloud.firestore {
     // Чат класу видно всім схваленим (як і раніше), окремий чат — лише його учасникам.
     function chatMember(key) {
       return key.matches('c[1-9]')
+        || (key.matches('d.+') && request.auth.uid in key[1:key.size()].split('_'))
         || (key.matches('g[A-Za-z0-9]+')
             && request.auth.uid in get(/databases/$(database)/documents/groups/$(key[1:key.size()])).data.members);
     }
@@ -258,7 +270,7 @@ service cloud.firestore {
       allow read: if approved() || isAdmin();
       allow create, update: if (approved() || isAdmin())
         && request.resource.data.keys().hasOnly(['chat', 'uid', 'at'])
-        && shortText(request.resource.data.chat, 2, 40)
+        && shortText(request.resource.data.chat, 2, 80)
         && request.resource.data.uid == request.auth.uid
         && id == request.resource.data.chat + '_' + request.auth.uid
         && request.resource.data.at == request.time;
@@ -386,6 +398,11 @@ service cloud.firestore {
       allow update: if (canUseClass(int(cls)) || isMod()) && (reactOk() || editOk());
       allow delete: if isAdmin() || isMod() || (signedIn() && resource.data.uid == request.auth.uid);
     }
+    match /classes/{cls}/media/{id} {
+      allow read: if canUseClass(int(cls)) || isMod();
+      allow create: if canUseClass(int(cls)) && hasProfile() && !muted() && validMedia(request.resource.data);
+      allow delete: if isStaff() || (signedIn() && resource.data.uid == request.auth.uid);
+    }
 
     // Окремі чати. Працюють лише після схвалення адміністратором;
     // нових учасників теж додає адміністратор (зі списку invited).
@@ -421,6 +438,131 @@ service cloud.firestore {
         allow update: if inGroup() && (reactOk() || editOk());
         allow delete: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
       }
+      match /media/{id} {
+        function grp2() { return get(/databases/$(database)/documents/groups/$(gid)).data; }
+        function inGroup2() { return approved() && grp2().status == 'approved' && request.auth.uid in grp2().members; }
+        allow read: if isAdmin() || inGroup2();
+        allow create: if inGroup2() && !muted() && validMedia(request.resource.data);
+        allow delete: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
+      }
+    }
+
+    // Особисті повідомлення: id = uid1_uid2 (за алфавітом). Читають лише двоє.
+    match /dms/{dmid} {
+      allow read: if approved() && (resource == null || request.auth.uid in resource.data.members);
+      allow create: if approved()
+        && request.resource.data.keys().hasOnly(['members', 'at'])
+        && request.resource.data.members is list && request.resource.data.members.size() == 2
+        && request.auth.uid in request.resource.data.members
+        && request.resource.data.members[0] < request.resource.data.members[1]
+        && dmid == request.resource.data.members[0] + '_' + request.resource.data.members[1]
+        && exists(/databases/$(database)/documents/directory/$(request.resource.data.members[0]))
+        && exists(/databases/$(database)/documents/directory/$(request.resource.data.members[1]))
+        && request.resource.data.at == request.time;
+      allow update: if false;
+      allow delete: if isAdmin();
+      match /messages/{mid} {
+        allow read: if approved() && request.auth.uid in dmid.split('_');
+        allow create: if approved() && request.auth.uid in dmid.split('_') && !muted() && validMessage(request.resource.data);
+        allow update: if approved() && request.auth.uid in dmid.split('_') && (reactOk() || editOk());
+        // Модератори можуть видалити повідомлення за скаргою, але читати чужі особисті не можуть.
+        allow delete: if isStaff() || (signedIn() && resource.data.uid == request.auth.uid);
+      }
+      match /media/{id} {
+        allow read: if approved() && request.auth.uid in dmid.split('_');
+        allow create: if approved() && request.auth.uid in dmid.split('_') && !muted() && validMedia(request.resource.data);
+        allow delete: if isStaff() || (signedIn() && resource.data.uid == request.auth.uid);
+      }
+    }
+
+    // Хрестики-нулики: двоє гравців, ходять по черзі.
+    match /games/{id} {
+      allow read: if signedIn() && request.auth.uid in resource.data.players;
+      allow create: if approved()
+        && request.resource.data.keys().hasOnly(['x', 'o', 'players', 'names', 'board', 'turn', 'status', 'winner', 'at'])
+        && request.resource.data.x == request.auth.uid
+        && request.resource.data.o is string && request.resource.data.o != request.auth.uid
+        && exists(/databases/$(database)/documents/directory/$(request.resource.data.o))
+        && request.resource.data.players == [request.resource.data.x, request.resource.data.o]
+        && request.resource.data.names is map
+        && request.resource.data.board == '.........' && request.resource.data.turn == 'x'
+        && request.resource.data.status == 'invited' && request.resource.data.winner == ''
+        && request.resource.data.at == request.time;
+      allow update: if approved() && request.auth.uid in resource.data.players
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['board', 'turn', 'status', 'winner', 'at'])
+        && request.resource.data.at == request.time
+        && request.resource.data.board is string && request.resource.data.board.size() == 9
+        && ((resource.data.status == 'invited' && request.auth.uid == resource.data.o
+             && request.resource.data.status in ['playing', 'done'] && request.resource.data.board == resource.data.board)
+            || (resource.data.status == 'playing' && request.resource.data.status in ['playing', 'done']
+                && request.resource.data.turn != resource.data.turn
+                && ((resource.data.turn == 'x' && request.auth.uid == resource.data.x)
+                    || (resource.data.turn == 'o' && request.auth.uid == resource.data.o)))
+            || (resource.data.status == 'playing' && request.resource.data.status == 'done'
+                && request.resource.data.board == resource.data.board));
+      allow delete: if isAdmin() || (signedIn() && request.auth.uid in resource.data.players);
+    }
+
+    // Дошка для малювання класу: кожна лінія — окремий документ.
+    match /boards/{cls}/strokes/{id} {
+      allow read: if canUseClass(int(cls)) || isMod();
+      allow create: if canUseClass(int(cls)) && hasProfile() && !muted()
+        && request.resource.data.keys().hasOnly(['uid', 'color', 'w', 'pts', 'at'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.color is string && request.resource.data.color.matches('#[0-9A-Fa-f]{6}')
+        && request.resource.data.w is int && request.resource.data.w >= 1 && request.resource.data.w <= 40
+        && request.resource.data.pts is list && request.resource.data.pts.size() >= 2 && request.resource.data.pts.size() <= 800
+        && request.resource.data.at == request.time;
+      allow delete: if isStaff() || (signedIn() && resource.data.uid == request.auth.uid);
+    }
+
+    // Особисті нотатки: бачить лише автор.
+    match /notes/{uid}/items/{id} {
+      allow read, delete: if signedIn() && request.auth.uid == uid;
+      allow create, update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['text', 'at'])
+        && shortText(request.resource.data.text, 1, 1000)
+        && request.resource.data.at == request.time;
+    }
+
+    // Голосування для всієї школи: створюють адмін і модератори, голосує кожен один раз (можна змінити).
+    match /spolls/{id} {
+      allow read: if approved() || isAdmin();
+      allow create: if isStaff() && hasProfile()
+        && request.resource.data.keys().hasOnly(['q', 'opts', 'votes', 'by', 'name', 'closed', 'at'])
+        && shortText(request.resource.data.q, 2, 200)
+        && request.resource.data.opts is list && request.resource.data.opts.size() >= 2 && request.resource.data.opts.size() <= 6
+        && request.resource.data.votes == {} && request.resource.data.closed == false
+        && request.resource.data.by == request.auth.uid && request.resource.data.name == me().name
+        && request.resource.data.at == request.time;
+      allow update: if (isStaff() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['closed']))
+        || ((approved() || isAdmin()) && resource.data.closed == false
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['votes'])
+            && request.resource.data.votes.diff(resource.data.votes).affectedKeys().hasOnly([request.auth.uid])
+            && (!(request.auth.uid in request.resource.data.votes)
+                || (request.resource.data.votes[request.auth.uid] is int
+                    && request.resource.data.votes[request.auth.uid] >= 0
+                    && request.resource.data.votes[request.auth.uid] < resource.data.opts.size())));
+      allow delete: if isStaff();
+    }
+
+    // Вікно з оголошенням, яке всі побачать при вході.
+    match /meta/popup {
+      allow read: if approved() || isAdmin();
+      allow write: if isAdmin()
+        && request.resource.data.keys().hasOnly(['on', 'title', 'text', 'id', 'at'])
+        && request.resource.data.on is bool
+        && shortText(request.resource.data.title, 0, 80) && shortText(request.resource.data.text, 0, 600)
+        && shortText(request.resource.data.id, 1, 40)
+        && request.resource.data.at == request.time;
+    }
+    // Налаштування порталу: скільки днів зберігати повідомлення (0 — завжди).
+    match /meta/settings {
+      allow read: if approved() || isAdmin();
+      allow write: if isAdmin()
+        && request.resource.data.keys().hasOnly(['retention', 'at'])
+        && request.resource.data.retention in [0, 30, 90, 180, 365]
+        && request.resource.data.at == request.time;
     }
 
     // Бібліотека: посилання на книги. Додають адміністратор і модератори.

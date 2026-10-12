@@ -10,6 +10,9 @@
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="apple-mobile-web-app-title" content="Підпільний">
 <meta name="application-name" content="Підпільний">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0B0F2A">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -141,6 +144,7 @@
       <button class="tab" role="tab" data-tab="hints">Підказки</button>
       <button class="tab" role="tab" data-tab="library">📚 Бібліотека</button>
       <button class="tab" role="tab" data-tab="tools">☰ Корисне</button>
+      <button class="tab" role="tab" data-tab="games">🎮 Ігри <span class="badge" id="games-count" hidden></span></button>
       <button class="tab" role="tab" data-tab="updates">🆕 Оновлення <span class="badge new" id="upd-new" hidden>NEW</span></button>
       <button class="tab" role="tab" data-tab="profile">👤 Профіль</button>
       <button class="tab" role="tab" data-tab="settings">⚙ Налаштування</button>
@@ -150,6 +154,8 @@
     </nav>
   </header>
 
+  <div class="maint-banner viewas" id="viewas-banner" hidden>👀 Ти дивишся на портал як <b id="viewas-who"></b>. Писати в цьому режимі не можна. <button class="btn sm" type="button" id="viewas-exit">Вийти з режиму</button></div>
+  <div class="season-garland" id="season-garland" aria-hidden="true"></div>
   <div class="maint-banner" id="maint-banner" hidden>🛠 Увімкнено технічну перерву: учні зараз бачать екран перерви. Вимкнути можна у вкладці «Модерація».</div>
   <div class="wrap">
     <!-- Чат -->
@@ -159,6 +165,7 @@
       <div class="head">
         <h2 id="chat-title">Чат класу</h2>
         <div class="row" style="flex:0 1 auto; align-items:center">
+          <button class="icon-btn" type="button" id="b-mute-chat" title="Вимкнути сповіщення цього чату" aria-label="Вимкнути сповіщення цього чату">🔔</button>
           <input id="chat-search" type="search" placeholder="🔍 Пошук у чаті" aria-label="Пошук у чаті" style="max-width:220px">
           <label class="inline" for="chat-class" id="chat-class-wrap" hidden>Клас <select id="chat-class"></select></label>
         </div>
@@ -205,9 +212,13 @@
         <div class="reply-bar" id="reply-bar" hidden><span id="reply-text"></span><button class="del" type="button" id="reply-x" aria-label="Скасувати відповідь">✕</button></div>
         <div class="mentions" id="mentions" hidden></div>
         <div class="stickers" id="stickers" hidden></div>
+        <div class="rec-bar" id="rec-bar" hidden><span class="rec-dot"></span><span id="rec-time">0:00</span> Запис… натисни ⏹, щоб надіслати <button class="del" type="button" id="rec-x">скасувати</button></div>
         <form class="composer" id="f-chat">
           <button class="icon-btn" type="button" id="b-poll" title="Опитування" aria-label="Створити опитування">📊</button>
           <button class="icon-btn" type="button" id="b-sticker" title="Стікери" aria-label="Стікери">😀</button>
+          <button class="icon-btn" type="button" id="b-photo" title="Надіслати фото" aria-label="Надіслати фото">📷</button>
+          <button class="icon-btn" type="button" id="b-voice" title="Голосове повідомлення" aria-label="Записати голосове">🎤</button>
+          <input type="file" id="photo-file" accept="image/*" hidden>
           <input id="chat-text" maxlength="500" autocomplete="off" placeholder="Напиши повідомлення…" aria-label="Повідомлення">
           <button class="btn" type="submit">Надіслати</button>
         </form>
@@ -218,6 +229,16 @@
     <!-- Оголошення -->
     <section class="panel" id="p-news" role="tabpanel" hidden>
       <div class="head"><h2>Оголошення</h2></div>
+      <div class="card stack" id="spolls-box">
+        <div class="head"><h3>🗳 Голосування школи</h3><button class="btn ghost sm" type="button" id="b-spoll" hidden>+ Нове голосування</button></div>
+        <form class="stack" id="f-spoll" hidden>
+          <label for="sp-q">Питання<input id="sp-q" maxlength="200" placeholder="Яку екскурсію обираємо?"></label>
+          <div class="stack" id="sp-opts"></div>
+          <p class="err" role="alert"></p>
+          <div class="row"><button class="btn" type="submit">Опублікувати</button><button class="btn ghost" type="button" id="sp-cancel">Скасувати</button></div>
+        </form>
+        <div class="list" id="spolls"></div>
+      </div>
       <div class="chips" id="news-filter"></div>
       <div class="grid-2">
         <div class="list" id="news-list"></div>
@@ -298,6 +319,17 @@
           <p class="small" id="qz-msg"></p>
           <span class="eyebrow">Топ класу за місяць</span>
           <ol class="leaders" id="qz-top"></ol>
+          <p class="small champ" id="qz-champ" hidden></p>
+        </article>
+
+        <article class="card stack tool" id="notes-card">
+          <span class="eyebrow">Бачиш лише ти</span>
+          <h3>📝 Мої нотатки</h3>
+          <form class="stack" id="f-note">
+            <textarea id="note-text" maxlength="1000" rows="2" placeholder="Не забути: принести фарби в четвер" aria-label="Нова нотатка"></textarea>
+            <button class="btn" type="submit">Зберегти нотатку</button>
+          </form>
+          <div class="list small" id="notes"></div>
         </article>
 
         <article class="card stack tool" id="t-telegram" hidden>
@@ -328,6 +360,8 @@
             <div><b id="br-m">0</b><span>хв</span></div>
           </div>
           <p class="muted small" id="br-dates"></p>
+          <span class="eyebrow">Найближчі свята</span>
+          <ul class="hol-list" id="hol-list"></ul>
         </article>
 
         <article class="card stack tool">
@@ -382,6 +416,57 @@
             <li><a href="https://goroh.pp.ua" target="_blank" rel="noopener">Горох</a> — тлумачення й наголоси українських слів</li>
             <li><a href="https://classroom.google.com" target="_blank" rel="noopener">Google Classroom</a></li>
           </ul>
+        </article>
+      </div>
+    </section>
+
+    <!-- Ігри -->
+    <section class="panel" id="p-games" role="tabpanel" hidden>
+      <div class="head"><h2>🎮 Ігри</h2></div>
+      <div class="tools">
+        <article class="card stack tool" id="ttt-card">
+          <span class="eyebrow">Удвох онлайн</span>
+          <h3>❌ Хрестики-нулики ⭕</h3>
+          <div class="row">
+            <label for="ttt-opp">З ким грати<select id="ttt-opp"></select></label>
+            <button class="btn" type="button" id="ttt-invite" style="align-self:end">Кинути виклик</button>
+          </div>
+          <div class="list small" id="ttt-list"></div>
+          <div class="ttt-wrap" id="ttt-game" hidden>
+            <p class="ttt-status" id="ttt-status" aria-live="polite"></p>
+            <div class="ttt" id="ttt-board" role="grid" aria-label="Поле"></div>
+            <div class="row">
+              <button class="btn ghost sm" type="button" id="ttt-resign">Здатися</button>
+              <button class="btn ghost sm" type="button" id="ttt-close">Закрити</button>
+            </div>
+          </div>
+        </article>
+
+        <article class="card stack tool">
+          <span class="eyebrow">Сам із собою</span>
+          <h3>🔢 Вгадай число</h3>
+          <p class="small">Я загадав число від 1 до 100. Вгадаєш за найменше спроб?</p>
+          <form class="row" id="f-guess">
+            <input id="guess-n" inputmode="numeric" maxlength="3" placeholder="50" aria-label="Твоє число">
+            <button class="btn" type="submit">Перевірити</button>
+          </form>
+          <div class="pick-name" id="guess-hint" aria-live="polite">?</div>
+          <p class="small muted" id="guess-best"></p>
+          <button class="btn ghost sm" type="button" id="guess-new">Нова гра</button>
+        </article>
+
+        <article class="card stack tool board-card">
+          <span class="eyebrow" id="bd-title">Дошка класу</span>
+          <h3>🎨 Малюємо всім класом</h3>
+          <label class="inline" for="bd-cls" id="bd-cls-wrap" hidden>Клас <select id="bd-cls"></select></label>
+          <div class="chips" id="bd-colors"></div>
+          <div class="row" style="align-items:center">
+            <label class="inline" for="bd-w">Товщина <select id="bd-w"><option value="3">тонко</option><option value="7" selected>середньо</option><option value="16">товсто</option><option value="30">гумка ⬜</option></select></label>
+            <button class="btn ghost sm" type="button" id="bd-undo">↶ Скасувати мою лінію</button>
+            <button class="btn ghost sm" type="button" id="bd-clear" hidden>🧹 Очистити дошку</button>
+          </div>
+          <canvas class="board" id="bd-canvas" width="900" height="600" aria-label="Дошка для малювання"></canvas>
+          <p class="muted small">Малюй пальцем або мишкою. Лінію бачать усі однокласники одразу.</p>
         </article>
       </div>
     </section>
@@ -448,6 +533,28 @@
       <div class="card stack">
         <h3>Сповіщення</h3>
         <label class="inline" for="msg-sound"><input type="checkbox" id="msg-sound" style="width:auto"> Звук нових повідомлень</label>
+        <div class="row" style="align-items:center">
+          <button class="btn ghost sm" type="button" id="b-notif">🔔 Увімкнути сповіщення</button>
+          <span class="muted small" id="notif-state"></span>
+        </div>
+        <p class="muted small">Сповіщення приходять, коли портал відкритий у фоні (інша вкладка чи згорнутий додаток). Окремий чат можна вимкнути кнопкою 🔔 над ним.</p>
+      </div>
+      <div class="card stack" id="install-card">
+        <h3>📲 Портал як додаток</h3>
+        <p class="small" id="install-text">Додай портал на робочий стіл — він відкриватиметься окремим вікном з нашим логотипом, як справжній додаток.</p>
+        <div class="chips" id="install-os"></div>
+        <button class="btn" type="button" id="b-install">📲 Встановити</button>
+        <ol class="install-steps" id="install-steps"></ol>
+      </div>
+      <div class="card stack">
+        <h3>Святкові теми</h3>
+        <label for="season-sel">Прикраси до свят<select id="season-sel">
+          <option value="auto">Автоматично (Хелловін, Новий рік, День Валентина)</option>
+          <option value="off">Вимкнено</option>
+          <option value="halloween">🎃 Хелловін зараз</option>
+          <option value="newyear">❄ Новий рік зараз</option>
+          <option value="valentine">💌 День Валентина зараз</option>
+        </select></label>
       </div>
       <p class="muted small">Налаштування зберігаються на цьому пристрої.</p>
     </section>
@@ -506,6 +613,31 @@
     </section>
 
     <section class="panel" id="p-admin" role="tabpanel" hidden>
+      <div class="card stack" id="popup-box">
+        <div class="head"><h3>📢 Вікно для всіх при вході</h3><span class="pill" id="popup-state">вимкнено</span></div>
+        <label for="pp-title">Заголовок<input id="pp-title" maxlength="80" placeholder="Увага!"></label>
+        <label for="pp-text">Текст<textarea id="pp-text" maxlength="600" rows="3" placeholder="Завтра уроки починаються о 10:00"></textarea></label>
+        <div class="row">
+          <button class="btn" type="button" id="pp-show">Показати всім</button>
+          <button class="btn ghost" type="button" id="pp-hide">Прибрати</button>
+        </div>
+        <p class="muted small">Кожен побачить вікно один раз, коли зайде на портал.</p>
+      </div>
+      <div class="card stack">
+        <h3>🗑 Автовидалення старих повідомлень</h3>
+        <label for="ret-sel">Видаляти повідомлення, фото й голосові старші за<select id="ret-sel">
+          <option value="0">Не видаляти</option><option value="30">30 днів</option><option value="90">3 місяці</option><option value="180">6 місяців</option><option value="365">1 рік</option>
+        </select></label>
+        <p class="muted small" id="ret-note">Чистка запускається, коли адміністратор заходить на портал (раз на день). Особисті повідомлення не чіпаються.</p>
+      </div>
+      <div class="card stack">
+        <h3>👀 Подивитися як учень</h3>
+        <div class="row">
+          <label for="va-cls">Клас<select id="va-cls"></select></label>
+          <button class="btn" type="button" id="va-go" style="align-self:end">Відкрити як учень</button>
+        </div>
+        <p class="muted small">Портал покаже, що бачить звичайний учень цього класу: без вкладок адміна й модерації.</p>
+      </div>
       <div class="card stack" id="invites-box">
         <div class="head"><h3>Коди-запрошення</h3></div>
         <p class="muted small">Дай однокласнику код — з ним заявка схвалюється одразу, без очікування.</p>
@@ -529,6 +661,16 @@
 </div>
 
 <div class="toast" id="toast" role="status"></div>
+<dialog class="lightbox" id="lightbox"><img id="lightbox-img" alt="Фото з чату"><button class="btn" type="button" id="lightbox-x">Закрити</button></dialog>
+<dialog class="popup-dlg" id="popup-dlg" aria-labelledby="popup-title">
+  <div class="stack">
+    <span class="eyebrow">📢 Оголошення</span>
+    <h2 id="popup-title"></h2>
+    <p id="popup-text"></p>
+    <button class="btn" type="button" id="popup-ok">Зрозуміло</button>
+  </div>
+</dialog>
+<div class="season-fx" id="season-fx" aria-hidden="true"></div>
 
 <template id="tpl-profile">
   <fieldset class="roles" hidden>
