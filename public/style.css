@@ -536,3 +536,15 @@ input.bad{border-color:var(--bad); background:color-mix(in srgb,var(--bad) 20%,v
 .pv{position:relative}
 .pv-house{position:absolute; top:12px; right:12px; width:46px; height:46px; border-radius:14px; border:1px solid var(--line); background:var(--surface2); font-size:1.4rem; cursor:pointer; box-shadow:0 4px 12px rgba(0,0,0,.25)}
 .pv-house:hover{border-color:var(--accent)}
+.upd-full{border:0; padding:0; margin:0; width:100vw; height:100dvh; max-width:100vw; max-height:100dvh; background:radial-gradient(circle at 30% 20%,color-mix(in srgb,var(--violet) 45%,var(--bg)),var(--bg) 70%); color:var(--fg)}
+.upd-full[open]{display:grid; place-items:center}
+.upd-full::backdrop{background:var(--bg)}
+.uf-inner{width:min(560px,calc(100vw - 32px)); display:grid; gap:14px; text-align:center; animation:ufIn .5s ease}
+@keyframes ufIn{from{opacity:0; transform:scale(.92) translateY(20px)}}
+.uf-badge{justify-self:center; padding:6px 14px; border-radius:999px; background:var(--accent); color:var(--accent-ink); font-weight:800}
+.uf-inner h2{font-family:var(--f-display); font-size:clamp(1.6rem,6vw,2.4rem); margin:0}
+.uf-ver{margin:0; color:var(--muted)}
+.uf-body{text-align:left; background:var(--surface); border:1px solid var(--line); border-radius:var(--r); padding:16px 20px; max-height:50vh; overflow:auto}
+.uf-body ul{margin:0; padding-left:20px; display:grid; gap:8px}
+.uf-body p{margin:0}
+.uf-acts{justify-content:center}

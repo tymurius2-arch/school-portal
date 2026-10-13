@@ -558,8 +558,31 @@ function start() {
       updates = s.docs;
       if (!$("#p-updates").hidden) markUpdatesSeen(); else renderUpdBadge();
       renderUpdates();
+      showUpdateFull();
     }, e => console.error(e)));
   }
+  // Нове оновлення учень бачить на весь екран один раз.
+  function showUpdateFull() {
+    const d = updates[0];
+    if (!d || isAdmin || isMod || viewAs || profile.role !== "student") return;
+    const key = `updFull.${me.uid}`;
+    if (store.get(key, "") === d.id) return;
+    const dlg = $("#upd-full"); if (dlg.open) return;
+    if ($("#popup-dlg").open) { $("#popup-dlg").addEventListener("close", showUpdateFull, { once: true }); return; }
+    const u = d.data({ serverTimestamps: "estimate" }), t = toDate(u.at);
+    $("#uf-title").textContent = u.title;
+    $("#uf-ver").textContent = [u.ver, t ? `${fmtDay(t)} ${fmtTime(t)}` : ""].filter(Boolean).join(" · ");
+    const lines = String(u.text).split("\n").map(x => x.replace(/^[-•*]\s*/, "").trim()).filter(Boolean);
+    const body = lines.length > 1 ? el("ul") : el("p");
+    if (lines.length > 1) lines.forEach(l => body.append(el("li", null, l))); else body.textContent = lines[0] || "";
+    $("#uf-body").replaceChildren(body);
+    dlg.dataset.id = d.id;
+    dlg.showModal();
+  }
+  const ufSeen = () => { if (me) store.set(`updFull.${me.uid}`, $("#upd-full").dataset.id || ""); };
+  $("#uf-ok").addEventListener("click", () => { ufSeen(); $("#upd-full").close(); });
+  $("#uf-all").addEventListener("click", () => { ufSeen(); $("#upd-full").close(); openTab("updates"); });
+  $("#upd-full").addEventListener("cancel", ufSeen);
   const latestUpd = () => { const d = updates[0]; const t = d && toDate(d.data({ serverTimestamps: "estimate" }).at); return t ? t.getTime() : 0; };
   function renderUpdBadge() { $("#upd-new").hidden = !(latestUpd() > store.get(updKey(), 0)); }
   function markUpdatesSeen() {
