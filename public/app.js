@@ -2219,6 +2219,8 @@ function start() {
   function openProfile(uid) { pvUid = uid === me.uid ? null : uid; openTab("profile"); }
   function renderProfileView() {
     const uid = pvUid || me.uid, isMe = uid === me.uid;
+    $("#pv-house").title = isMe ? "Мій дім" : "Подивитися дім"; $("#pv-house").setAttribute("aria-label", $("#pv-house").title);
+    $("#pv-house").onclick = () => { openTab("house"); openHouse(uid); };
     const p = profs[uid] || {};
     const d = isMe ? { name: profile.name, role: profile.role, cls: myClass() } : (dir[uid] || { name: "Учасник", role: "student", cls: null });
     $("#pv-back").hidden = isMe;
