@@ -577,3 +577,57 @@ input.bad{border-color:var(--bad); background:color-mix(in srgb,var(--bad) 20%,v
 .pet-ava.egg{cursor:pointer}
 .pet-ava.tap{animation:eggTap .25s ease}
 @keyframes eggTap{0%{transform:scale(1) rotate(0)} 40%{transform:scale(1.12) rotate(-10deg)} 100%{transform:scale(1) rotate(0)}}
+/* Догляд за вихованцем */
+.pet-walk[data-hat]:not([data-hat=""])::before{content:attr(data-hat); position:absolute; left:50%; top:-42%; transform:translateX(-50%); font-size:55%}
+.pet-play{border:0; padding:0; margin:0; width:100vw; height:100dvh; max-width:100vw; max-height:100dvh; color:var(--fg); background:linear-gradient(#FFE7C2 0 62%, #C98A55 62%); overflow:hidden; user-select:none; -webkit-user-select:none}
+.pet-play[open]{display:flex; flex-direction:column}
+.pet-play::backdrop{background:#000}
+.pp-top{display:flex; align-items:center; gap:10px; padding:10px 12px; background:rgba(11,15,42,.85)}
+.pp-who{display:grid; line-height:1.2}
+.pp-who small{color:var(--muted)}
+.pp-stats{display:grid; grid-template-columns:repeat(4,1fr); gap:8px; padding:8px 12px; background:rgba(11,15,42,.75)}
+.pp-stat{display:flex; align-items:center; gap:4px; font-size:1rem}
+.pp-stat i{flex:1; height:10px; border-radius:6px; background:rgba(255,255,255,.2); overflow:hidden}
+.pp-stat b{display:block; height:100%; background:var(--ok); transition:width .4s}
+.pp-stat b.low{background:var(--bad)}
+.pp-scene{position:relative; flex:1; display:grid; place-items:center; touch-action:none; overflow:hidden}
+.pp-pet{position:relative; line-height:1; cursor:pointer; animation:ppIdle 2.6s ease-in-out infinite; filter:drop-shadow(0 10px 8px rgba(0,0,0,.25)); transform-origin:50% 100%}
+.pp-pet.legend{filter:drop-shadow(0 0 18px #FFC93C)}
+.pp-pet.sleep{animation:ppSleep 3.5s ease-in-out infinite}
+.pp-pet.chomp{animation:ppChomp .35s ease 2}
+.pp-pet.jump{animation:ppJump .55s ease}
+@keyframes ppIdle{0%,100%{transform:scale(1,1)} 50%{transform:scale(1.03,.97)}}
+@keyframes ppSleep{0%,100%{transform:scale(1,1) rotate(-3deg)} 50%{transform:scale(1.05,.95) rotate(-3deg)}}
+@keyframes ppChomp{50%{transform:scale(1.12,.88)}}
+@keyframes ppJump{0%,100%{transform:translateY(0)} 40%{transform:translateY(-38%) rotate(-6deg)} 70%{transform:translateY(-10%)}}
+.pp-hat{position:absolute; left:50%; top:-38%; transform:translateX(-50%); font-size:48%; z-index:2}
+.pp-mood{position:absolute; right:-28%; top:-10%; font-size:34%; background:#fff; border-radius:50%; padding:.12em; box-shadow:0 4px 10px rgba(0,0,0,.2)}
+.pp-bubble{position:absolute; left:-46%; top:-34%; font-size:30%; background:#fff; border-radius:999px; padding:.15em .35em; box-shadow:0 4px 10px rgba(0,0,0,.2); animation:ppBob 1.6s ease-in-out infinite}
+@keyframes ppBob{50%{transform:translateY(-8px)}}
+.pp-dirt{position:absolute; inset:0; pointer-events:none}
+.pp-dirt span{position:absolute; font-size:18%; opacity:.85}
+.pp-fx{position:absolute; inset:0; pointer-events:none}
+.pp-float{position:absolute; font-size:1.8rem; transform:translate(-50%,-50%); animation:ppUp 1.3s ease-out forwards}
+.pp-float.txt{font-size:1.1rem; font-weight:800; color:#3A2410; background:#fff; padding:2px 10px; border-radius:999px}
+.pp-float.drop{animation:ppDrop .9s ease-in forwards}
+.pp-float.bub{font-size:1.4rem; animation:ppBub 1.2s ease-out forwards}
+@keyframes ppUp{to{transform:translate(-50%,-140%); opacity:0}}
+@keyframes ppDrop{to{transform:translate(-50%,180px); opacity:0}}
+@keyframes ppBub{to{transform:translate(-50%,-90%) scale(1.6); opacity:0}}
+.pp-toy{position:absolute; left:10%; bottom:10%; font-size:3rem; animation:ppToss 1.2s cubic-bezier(.3,.6,.4,1) forwards}
+@keyframes ppToss{0%{transform:translate(0,0) rotate(0)} 50%{transform:translate(32vw,-30vh) rotate(360deg)} 100%{transform:translate(40vw,-12vh) rotate(540deg); opacity:0}}
+.pp-sponge{position:absolute; font-size:3.2rem; transform:translate(-50%,-50%) rotate(-15deg); pointer-events:none; z-index:3}
+.pp-dark{position:absolute; inset:0; background:rgba(5,6,30,.78); pointer-events:none}
+.pp-hint{margin:0; text-align:center; padding:6px 12px; font-weight:700; color:#3A2410; background:rgba(255,255,255,.55)}
+.pp-tray{display:flex; gap:8px; justify-content:center; flex-wrap:wrap; padding:10px; background:rgba(11,15,42,.8); min-height:72px; touch-action:none}
+.pp-item{width:56px; height:56px; border-radius:16px; border:2px solid var(--line); background:var(--surface2); font-size:1.9rem; cursor:grab; color:var(--fg)}
+.pp-item.on{border-color:var(--accent); box-shadow:0 0 0 2px var(--accent)}
+.pp-item.big{width:auto; padding:0 18px; font-size:1.1rem; font-weight:800}
+.pp-item.treat{width:auto; padding:0 10px; font-size:1.3rem}
+.pp-ghost{position:fixed; z-index:1000; font-size:3rem; transform:translate(-50%,-50%); pointer-events:none}
+.pp-tabs{display:grid; grid-template-columns:repeat(5,1fr); background:var(--bg); padding-bottom:env(safe-area-inset-bottom)}
+.pp-tabs button{display:grid; justify-items:center; gap:2px; padding:8px 0; border:0; background:none; color:var(--fg); font-size:1.5rem; cursor:pointer}
+.pp-tabs button small{font-size:.7rem; color:var(--muted)}
+.pp-tabs button[aria-pressed="true"]{background:var(--surface2)}
+.pp-tabs button[aria-pressed="true"] small{color:var(--accent)}
+@media (prefers-reduced-motion:reduce){.pp-pet{animation:none}}

@@ -2130,7 +2130,7 @@ function start() {
     if (!p || typeof p !== "object" || !PETS[p.r]) return null;
     const kind = PETS[p.r].find(([e]) => e === p.e); if (!kind) return null;
     const n = x => clampN(x, 0, 9e15, 0);
-    return { e: p.e, r: p.r, name: clean(String(p.name || kind[1])).slice(0, 20), xp: clampN(p.xp, 0, 99999, 0), born: n(p.born), fed: n(p.fed), played: n(p.played), washed: n(p.washed), warm: n(p.warm) };
+    return { e: p.e, r: p.r, name: clean(String(p.name || kind[1])).slice(0, 20), xp: clampN(p.xp, 0, 99999, 0), born: n(p.born), fed: n(p.fed), played: n(p.played), washed: n(p.washed), warm: n(p.warm), slept: n(p.slept), hat: ["🎩", "👒", "🧢", "👑", "🎓", "⛑", "🎀", "🕶", "🌸", "🎃", "🎅"].includes(p.hat) ? p.hat : "" };
   }
   function hPayload(d) {
     const rooms = d.rooms.map(r => ({ id: r.id, ic: r.ic, name: (clean(r.name).trim() || "Кімната").slice(0, 20), wall: r.wall, floor: r.floor, items: hSanitize(r.items) }));
@@ -2185,10 +2185,11 @@ function start() {
       return;
     }
     const [stage, lvl] = petStage(p), egg = lvl === 0;
-    const hunger = egg ? 100 : petBar(p.fed, 6), happy = egg ? 100 : petBar(p.played, 8), clean_ = egg ? 100 : petBar(p.washed, 4);
-    const mood = egg ? "🥚" : hunger < 30 ? "🍖?" : clean_ < 30 ? "🫧?" : happy < 30 ? "🎾?" : "❤️";
+    const hunger = egg ? 100 : petBar(p.fed, 6), happy = egg ? 100 : petBar(p.played, 8), clean_ = egg ? 100 : petBar(p.washed, 4), energy = egg ? 100 : petBar(p.slept || 0, 5);
+    const mood = egg ? "🥚" : hunger < 30 ? "🍖?" : clean_ < 30 ? "🫧?" : energy < 25 ? "💤?" : happy < 30 ? "🎾?" : "❤️";
     walk.hidden = false;
-    walk.textContent = egg ? "🥚" : p.e;
+    walk.textContent = egg ? "🥚" : p.e + (p.hat ? "" : "");
+    walk.dataset.hat = egg ? "" : (p.hat || "");
     walk.style.fontSize = `calc(${[70, 70, 95, 120, 140][lvl]} * var(--u))`;
     walk.dataset.mood = mood; walk.classList.toggle("egg", egg); walk.classList.toggle("legend", p.r === "l" && !egg);
     const head = el("div", "pet-head");
@@ -2201,20 +2202,20 @@ function start() {
     const parts = [el("h3", null, "🐾 Вихованець"), head];
     if (!egg) {
       const bars = el("div", "pet-bars");
-      [["🍖 Ситість", hunger], ["🎾 Радість", happy], ["🫧 Чистота", clean_]].forEach(([t, v]) => { const r = el("div", "pet-bar"), i = el("i"), f = el("b"); f.style.width = v + "%"; f.className = v < 30 ? "low" : ""; i.append(f); r.append(el("span", null, t), i, el("small", null, v + "%")); bars.append(r); });
+      [["🍖 Ситість", hunger], ["🎾 Радість", happy], ["🫧 Чистота", clean_], ["⚡ Енергія", energy]].forEach(([t, v]) => { const r = el("div", "pet-bar"), i = el("i"), f = el("b"); f.style.width = v + "%"; f.className = v < 30 ? "low" : ""; i.append(f); r.append(el("span", null, t), i, el("small", null, v + "%")); bars.append(r); });
       parts.push(bars);
       const next = [20, 60, 150][lvl - 1];
       if (next) parts.push(el("p", "muted small", `До рівня «${["підліток", "дорослий", "легенда"][lvl - 1]}»: ще ${next - p.xp} досвіду`));
     }
     if (mine && !viewAs) {
       const acts = el("div", "row pet-acts");
-      (egg ? ["warm"] : ["feed", "play", "wash"]).forEach(k => {
+      if (!egg) { const pl = el("button", "btn", `🐾 Доглядати за ${p.name}`); pl.type = "button"; pl.addEventListener("click", openPetPlay); acts.append(pl); }
+      (egg ? ["warm"] : []).forEach(k => {
         const a = ACTIONS[k], left = p[a.field] + a.cd - Date.now();
         const label = k === "warm" && left <= 0 ? `🔥 Гріти яйце: тапни ${EGG_TAPS - eggTaps} раз${EGG_TAPS - eggTaps === 1 ? "" : "ів"}` : a.label;
         const b = el("button", "btn sm" + (left > 0 ? " ghost" : ""), left > 0 ? `${a.label} · ${Math.ceil(left / MIN)} хв` : label); b.type = "button"; b.disabled = left > 0;
         b.addEventListener("click", () => k === "warm" ? eggTap() : petAct(k)); acts.append(b);
       });
-      if (!egg) { const t = el("button", "btn sm ghost", `🍬 Ласощі (${hData.inv.treats})`); t.type = "button"; t.disabled = !hData.inv.treats; t.title = "+5 досвіду. Ласощі виграєш у колесі удачі"; t.addEventListener("click", () => petAct("treat")); acts.append(t); }
       parts.push(acts);
     }
     box.replaceChildren(...parts);
@@ -2244,13 +2245,222 @@ function start() {
       const a = ACTIONS[k];
       if (Date.now() - p[a.field] < a.cd) return;
       p[a.field] = Date.now(); p.xp += a.xp;
-      if (k === "warm" && p.xp >= 3) { p.fed = p.played = p.washed = Date.now(); }
+      if (k === "warm" && p.xp >= 3) { p.fed = p.played = p.washed = p.slept = Date.now(); }
     }
     const now = petStage(p)[1];
     if (was === 0 && now > 0) toast(`🐣 Вилупився ${p.name}! Це ${RARITY[p.r]} ${p.e}`);
     else if (now > was) toast(`🎉 ${p.name} виріс: тепер ${petStage(p)[0]}!`);
     hChanged(false); renderPet();
   }
+  /* ---- Догляд за вихованцем: інтерактивна сцена ---- */
+  const FOODS = [["🐟", 25, "😋"], ["🍖", 30, "😋"], ["🥛", 15, "😊"], ["🍪", 10, "😍"], ["🍎", 15, "😊"], ["🥕", 15, "😊"], ["🍕", 25, "😍"], ["🥦", 10, "🤢"]];
+  const TOYS = [["⚽", "ball"], ["🧶", "yarn"], ["🪀", "yoyo"], ["🎈", "balloon"]];
+  const HATS = ["", "🎩", "👒", "🧢", "👑", "🎓", "⛑", "🎀", "🕶", "🌸", "🎃", "🎅"];
+  const RATE = { fed: 6, washed: 4, played: 8, slept: 5 };
+  // Значення шкали (0–100) зберігаємо як час: «коли шкала була повна».
+  const petVal = (p, f) => petBar(p[f] || 0, RATE[f]);
+  const setVal = (p, f, v) => { p[f] = Date.now() - (100 - Math.max(0, Math.min(100, v))) / RATE[f] * H; };
+  let pp = { mode: "food", dark: false, rub: 0, sleepT: null, emo: null, emoT: null, saveT: null };
+  function ppSound(f1, f2, dur = .18, type = "sine") {
+    if (!soundOn) return;
+    try {
+      const ac = ppSound.ac = ppSound.ac || new (window.AudioContext || window.webkitAudioContext)();
+      const o = ac.createOscillator(), g = ac.createGain(); o.type = type;
+      o.frequency.setValueAtTime(f1, ac.currentTime); o.frequency.exponentialRampToValueAtTime(f2, ac.currentTime + dur);
+      g.gain.setValueAtTime(.08, ac.currentTime); g.gain.exponentialRampToValueAtTime(.001, ac.currentTime + dur);
+      o.connect(g); g.connect(ac.destination); o.start(); o.stop(ac.currentTime + dur + .02);
+    } catch {}
+  }
+  function openPetPlay() {
+    const p = hData && hData.pet; if (!p || petStage(p)[1] === 0) return;
+    pp.mode = "food"; pp.dark = false; pp.rub = 0;
+    $("#pet-play").showModal(); ppRender(); ppTray();
+  }
+  function ppClose() {
+    clearInterval(pp.sleepT); pp.sleepT = null; pp.dark = false;
+    if ($("#pet-play").open) $("#pet-play").close();
+    hChanged(false); renderPet();
+  }
+  function ppSave() { clearTimeout(pp.saveT); pp.saveT = setTimeout(() => hChanged(false), 600); }
+  function ppXp(before) {
+    // Досвід — лише коли вихованцю справді було потрібно.
+    const p = hData.pet; if (before >= 85) return;
+    const was = petStage(p)[1]; p.xp += 1;
+    const now = petStage(p)[1];
+    if (now > was) { toast(`🎉 ${p.name} виріс: тепер ${petStage(p)[0]}!`); ppSound(500, 1200, .5, "triangle"); }
+  }
+  function ppEmote(face, ms = 1600) {
+    pp.emo = face; clearTimeout(pp.emoT);
+    pp.emoT = setTimeout(() => { pp.emo = null; ppRender(); }, ms);
+    ppRender();
+  }
+  function ppFx(text, x, y, cls = "") {
+    const s = el("span", "pp-float " + cls, text);
+    s.style.left = x + "px"; s.style.top = y + "px";
+    $("#pp-fx").append(s); setTimeout(() => s.remove(), 1400);
+  }
+  function petCenter() { const r = $("#pp-pet").getBoundingClientRect(), sr = $("#pp-scene").getBoundingClientRect(); return [r.left - sr.left + r.width / 2, r.top - sr.top + r.height * .35]; }
+  function ppRender() {
+    const p = hData && hData.pet; if (!p) return;
+    const v = { fed: petVal(p, "fed"), washed: petVal(p, "washed"), played: petVal(p, "played"), slept: petVal(p, "slept") };
+    $("#pp-name").textContent = p.name;
+    $("#pp-lvl").textContent = `${petStage(p)[0]} · досвід ${p.xp}`;
+    $("#pp-stats").replaceChildren(...[["🍖", "fed"], ["🫧", "washed"], ["🎾", "played"], ["⚡", "slept"]].map(([i, f]) => {
+      const d = el("div", "pp-stat"), bar = el("i"), b = el("b"); b.style.width = v[f] + "%"; b.className = v[f] < 30 ? "low" : ""; bar.append(b); d.append(el("span", null, i), bar); d.title = `${i} ${v[f]}%`; return d;
+    }));
+    const need = pp.dark ? "💤" : v.fed < 40 ? "🍖" : v.washed < 40 ? "🧼" : v.slept < 30 ? "😪" : v.played < 40 ? "🎾" : "";
+    $("#pp-bubble").textContent = need; $("#pp-bubble").hidden = !need || !!pp.emo;
+    const mood = pp.emo || (pp.dark ? "😴" : v.fed < 25 ? "😢" : v.washed < 25 ? "😖" : v.slept < 20 ? "🥱" : v.played < 25 ? "😒" : "😊");
+    $("#pp-face").textContent = p.e; $("#pp-mood").textContent = mood;
+    $("#pp-pet").style.fontSize = `${[0, 6, 7.5, 9, 10][petStage(p)[1]]}rem`;
+    $("#pp-pet").classList.toggle("legend", p.r === "l");
+    $("#pp-pet").classList.toggle("sleep", pp.dark);
+    $("#pp-hat").textContent = p.hat || "";
+    $("#pp-dark").hidden = !pp.dark;
+    // Бруд: що брудніший, то більше плям.
+    const spots = Math.round((100 - v.washed) / 14), dirt = $("#pp-dirt");
+    if (dirt.children.length !== spots) {
+      dirt.replaceChildren(...Array.from({ length: spots }, (_, i) => { const s = el("span", null, i % 3 ? "🟤" : "💩"); s.style.left = (18 + (i * 37) % 64) + "%"; s.style.top = (20 + (i * 23) % 55) + "%"; return s; }));
+    }
+    $$("#pp-tabs button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.m === pp.mode)));
+  }
+  function ppTray() {
+    const tray = $("#pp-tray"), p = hData.pet;
+    if (pp.mode === "food") {
+      tray.replaceChildren(...FOODS.map(([e, n]) => { const b = el("button", "pp-item", e); b.type = "button"; b.dataset.food = e; b.title = "Перетягни до рота або тапни"; return b; }),
+        ...(hData.inv.treats ? [(() => { const b = el("button", "pp-item treat", `🍬${hData.inv.treats}`); b.type = "button"; b.dataset.food = "🍬"; b.title = "Ласощі: +5 досвіду"; return b; })()] : []));
+      $("#pp-hint").textContent = "Перетягни їжу до вихованця (або просто тапни)";
+    } else if (pp.mode === "wash") {
+      tray.replaceChildren(...[["🧽", "sponge"], ["🚿", "shower"]].map(([e, k]) => { const b = el("button", "pp-item" + (k === "sponge" ? " on" : ""), e); b.type = "button"; b.dataset.tool = k; return b; }));
+      $("#pp-hint").textContent = "Три губкою по вихованцю, поки не зникне бруд. Потім — душ 🚿";
+    } else if (pp.mode === "play") {
+      tray.replaceChildren(...TOYS.map(([e, k]) => { const b = el("button", "pp-item", e); b.type = "button"; b.dataset.toy = k; return b; }));
+      $("#pp-hint").textContent = "Тапни іграшку — кинеш її. Погладь вихованця пальцем ❤️";
+    } else if (pp.mode === "sleep") {
+      const b = el("button", "pp-item big", pp.dark ? "💡 Увімкнути світло" : "🌙 Вимкнути світло"); b.type = "button"; b.dataset.light = "1";
+      tray.replaceChildren(b);
+      $("#pp-hint").textContent = pp.dark ? "Ш-ш-ш… вихованець спить і набирається сил ⚡" : "Вимкни світло, щоб вихованець поспав";
+    } else {
+      tray.replaceChildren(...HATS.map(h => { const b = el("button", "pp-item" + ((p.hat || "") === h ? " on" : ""), h || "🚫"); b.type = "button"; b.dataset.hat = h; b.title = h ? "Вдягнути" : "Зняти"; return b; }));
+      $("#pp-hint").textContent = "Обери шапку чи окуляри";
+    }
+  }
+  function ppEat(food) {
+    const p = hData.pet, before = petVal(p, "fed");
+    if (food === "🍬") {
+      if (!hData.inv.treats) return;
+      hData.inv.treats--; const was = petStage(p)[1]; p.xp += 5; setVal(p, "fed", before + 10);
+      ppEmote("😍"); ppSound(700, 1400, .25, "triangle");
+      if (petStage(p)[1] > was) toast(`🎉 ${p.name} виріс: тепер ${petStage(p)[0]}!`);
+      ppTray(); ppSave(); return;
+    }
+    const [, add, face] = FOODS.find(([e]) => e === food);
+    if (before >= 95) { ppEmote("🙅"); ppFx("Я ситий!", ...petCenter(), "txt"); ppSound(300, 200, .2); return; }
+    setVal(p, "fed", before + add); ppXp(before);
+    $("#pp-pet").classList.remove("chomp"); void $("#pp-pet").offsetWidth; $("#pp-pet").classList.add("chomp");
+    ppEmote(face); ppSound(220, 140, .12, "square"); setTimeout(() => ppSound(220, 140, .12, "square"), 180);
+    if (face === "🤢") ppFx("Фу-у!", ...petCenter(), "txt"); else ppFx("Ням!", ...petCenter(), "txt");
+    ppSave();
+  }
+  // Перетягування їжі
+  let ppDrag = null;
+  $("#pp-tray").addEventListener("pointerdown", e => {
+    const b = e.target.closest(".pp-item"); if (!b) return;
+    if (b.dataset.food) {
+      e.preventDefault();
+      const g = el("span", "pp-ghost", b.dataset.food.replace(/\d+/, "")); document.body.append(g);
+      g.style.left = e.clientX + "px"; g.style.top = e.clientY + "px";
+      ppDrag = { food: b.dataset.food, g, sx: e.clientX, sy: e.clientY, moved: false };
+      b.setPointerCapture(e.pointerId);
+    }
+  });
+  $("#pp-tray").addEventListener("pointermove", e => {
+    if (!ppDrag) return;
+    ppDrag.g.style.left = e.clientX + "px"; ppDrag.g.style.top = e.clientY + "px";
+    if (Math.hypot(e.clientX - ppDrag.sx, e.clientY - ppDrag.sy) > 10) ppDrag.moved = true;
+  });
+  $("#pp-tray").addEventListener("pointerup", e => {
+    if (!ppDrag) return;
+    const d = ppDrag; ppDrag = null; d.g.remove();
+    const r = $("#pp-pet").getBoundingClientRect();
+    const onPet = e.clientX > r.left - 20 && e.clientX < r.right + 20 && e.clientY > r.top - 20 && e.clientY < r.bottom + 20;
+    if (onPet || !d.moved) ppEat(d.food);
+  });
+  $("#pp-tray").addEventListener("pointercancel", () => { if (ppDrag) { ppDrag.g.remove(); ppDrag = null; } });
+  $("#pp-tray").addEventListener("click", e => {
+    const b = e.target.closest(".pp-item"); if (!b) return;
+    const p = hData.pet;
+    if (b.dataset.tool) {
+      if (b.dataset.tool === "shower") {
+        const before = petVal(p, "washed");
+        for (let i = 0; i < 14; i++) setTimeout(() => { const [x, y] = petCenter(); ppFx("💧", x - 70 + Math.random() * 140, y - 90 + Math.random() * 40, "drop"); }, i * 60);
+        $$("#pp-fx .bub").forEach(x => x.remove());
+        if (before < 100) { setVal(p, "washed", Math.max(before, 85) + 15); ppXp(before); }
+        ppEmote("🥰"); ppSound(900, 300, .5, "sawtooth"); ppSave();
+      } else { $$("#pp-tray .pp-item").forEach(x => x.classList.toggle("on", x === b)); }
+      return;
+    }
+    if (b.dataset.toy) {
+      const before = petVal(p, "played");
+      if (petVal(p, "slept") < 10) { ppEmote("🥱"); ppFx("Я втомився…", ...petCenter(), "txt"); return; }
+      const toy = el("span", "pp-toy " + b.dataset.toy, b.textContent); $("#pp-fx").append(toy); setTimeout(() => toy.remove(), 1300);
+      setTimeout(() => { $("#pp-pet").classList.remove("jump"); void $("#pp-pet").offsetWidth; $("#pp-pet").classList.add("jump"); ppSound(400, 900, .2, "triangle"); }, 500);
+      setVal(p, "played", before + 12); setVal(p, "slept", petVal(p, "slept") - 3); ppXp(before);
+      ppEmote("😆", 1800); ppSave(); return;
+    }
+    if (b.dataset.light) {
+      pp.dark = !pp.dark; clearInterval(pp.sleepT);
+      if (pp.dark) pp.sleepT = setInterval(() => {
+        const v = petVal(p, "slept");
+        if (v < 100) { setVal(p, "slept", v + 8); if (v < 85) ppXp(v); ppSave(); }
+        const [x, y] = petCenter(); ppFx("💤", x + 40, y - 40, "zzz"); ppRender();
+      }, 2000);
+      ppSound(pp.dark ? 300 : 600, pp.dark ? 150 : 900, .2); ppRender(); ppTray(); return;
+    }
+    if ("hat" in b.dataset) { p.hat = b.dataset.hat; ppSave(); ppRender(); ppTray(); ppEmote("😎", 1200); }
+  });
+  // Гладити й мити губкою: водимо пальцем по вихованцю.
+  let ppStroke = null;
+  $("#pp-scene").addEventListener("pointerdown", e => { if (e.target.closest("#pp-pet") || pp.mode === "wash") { ppStroke = { x: e.clientX, y: e.clientY, d: 0 }; $("#pp-scene").setPointerCapture(e.pointerId); } });
+  $("#pp-scene").addEventListener("pointermove", e => {
+    const sr = $("#pp-scene").getBoundingClientRect(), x = e.clientX - sr.left, y = e.clientY - sr.top;
+    if (pp.mode === "wash") { const sp = $("#pp-sponge"); sp.hidden = false; sp.style.left = x + "px"; sp.style.top = y + "px"; }
+    if (!ppStroke) return;
+    const dist = Math.hypot(e.clientX - ppStroke.x, e.clientY - ppStroke.y); ppStroke.x = e.clientX; ppStroke.y = e.clientY; ppStroke.d += dist;
+    const r = $("#pp-pet").getBoundingClientRect(), on = e.clientX > r.left && e.clientX < r.right && e.clientY > r.top && e.clientY < r.bottom;
+    if (!on) return;
+    const p = hData.pet;
+    if (pp.mode === "wash" && $("#pp-tray .pp-item.on[data-tool=sponge]")) {
+      pp.rub += dist;
+      if (Math.random() < .35) ppFx("🫧", x, y, "bub");
+      if (pp.rub > 220) {
+        pp.rub = 0; const before = petVal(p, "washed");
+        if (before < 100) { setVal(p, "washed", before + 9); ppXp(before); ppSave(); ppRender(); ppSound(1200, 1600, .06); }
+        if (petVal(p, "washed") >= 100) { ppEmote("✨🥰"); }
+      }
+    } else if (ppStroke.d > 90) {
+      ppStroke.d = 0; const before = petVal(p, "played");
+      setVal(p, "played", before + 3); if (Math.random() < .3) ppXp(before);
+      ppFx("❤️", x, y - 20, "heart"); ppEmote("🥰", 1200); ppSound(180, 120, .25, "sine"); ppSave();
+    }
+  });
+  const ppUp = () => { ppStroke = null; };
+  $("#pp-scene").addEventListener("pointerup", ppUp); $("#pp-scene").addEventListener("pointercancel", ppUp);
+  $("#pp-scene").addEventListener("pointerleave", () => { $("#pp-sponge").hidden = true; });
+  $("#pp-pet").addEventListener("click", () => {
+    if (pp.mode === "wash" || pp.dark) return;
+    $("#pp-pet").classList.remove("jump"); void $("#pp-pet").offsetWidth; $("#pp-pet").classList.add("jump");
+    ppEmote(["😆", "😄", "🤭"][Math.floor(Math.random() * 3)], 1000); ppSound(600, 1000, .12, "triangle");
+  });
+  $("#pp-tabs").addEventListener("click", e => {
+    const b = e.target.closest("button"); if (!b) return;
+    pp.mode = b.dataset.m; $("#pp-sponge").hidden = true;
+    if (pp.mode !== "sleep" && pp.dark) { pp.dark = false; clearInterval(pp.sleepT); }
+    ppRender(); ppTray();
+  });
+  $("#pp-x").addEventListener("click", ppClose);
+  $("#pet-play").addEventListener("cancel", e => { e.preventDefault(); ppClose(); });
+  setInterval(() => { if ($("#pet-play").open) ppRender(); }, 15000);
   setInterval(() => { if (hData && !$("#p-house").hidden) renderPet(); }, 60000);
 
   // ---- Колесо удачі (раз на день) ----

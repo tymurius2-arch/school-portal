@@ -521,7 +521,7 @@ service cloud.firestore {
     // Кімнати (до 6), вихованець, рідкісні речі й колесо удачі.
     function houseExtra(d) {
       return (!('rooms' in d) || (d.rooms is list && d.rooms.size() <= 6))
-        && (!('pet' in d) || (d.pet is map && d.pet.keys().hasOnly(['e', 'r', 'name', 'xp', 'born', 'fed', 'played', 'washed', 'warm'])
+        && (!('pet' in d) || (d.pet is map && d.pet.keys().hasOnly(['e', 'r', 'name', 'xp', 'born', 'fed', 'played', 'washed', 'warm', 'slept', 'hat'])
                               && d.pet.r in ['c', 'r', 'l'] && shortText(d.pet.name, 0, 20) && d.pet.xp is int))
         && (!('inv' in d) || (d.inv is map && d.inv.keys().hasOnly(['items', 'walls', 'treats'])
                               && d.inv.items is list && d.inv.items.size() <= 50
