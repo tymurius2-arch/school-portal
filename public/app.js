@@ -2126,11 +2126,32 @@ function start() {
       rooms: rooms.slice(0, 6).map((r, i) => ({ id: String(r.id || "r" + i).slice(0, 12), ic: String(r.ic || "🚪").slice(0, 8), name: clean(String(r.name || "Кімната")).slice(0, 20), wall: surf(r.wall, { k: "p", v: "lilac" }), floor: surf(r.floor, { k: "p", v: "parquet" }), items: hSanitize(r.items) }))
     };
   }
+  // Гардероб вихованця: що можна вдягнути в кожне місце.
+  const WEAR = {
+    hat: ["🎩 Шапки", ["🎩", "👒", "🧢", "👑", "🎓", "⛑", "🪖", "🎀", "🌸", "🌻", "🎃", "🎅"]],
+    eyes: ["🕶 Окуляри", ["🕶", "👓", "🥽"]],
+    neck: ["🎀 На шию", ["🎀", "🧣", "📿", "💎", "🏅", "🔔", "🌺"]],
+    body: ["👕 Одяг", ["👕", "👚", "👗", "🧥", "🦺", "👘", "🥋", "🎽", "🩱"]],
+    hand: ["🎈 У лапках", ["🎈", "🌹", "🍭", "🍦", "⚽", "🪄", "🧸", "🎁", "🌂"]]
+  };
+  function wearOf(p) {
+    const w = {}, src = p && p.wear && typeof p.wear === "object" ? p.wear : {};
+    Object.keys(WEAR).forEach(k => { if (WEAR[k][1].includes(src[k])) w[k] = src[k]; });
+    if (!w.hat && p && WEAR.hat[1].includes(p.hat)) w.hat = p.hat;   // старі шапки
+    if (!w.eyes && p && p.hat === "🕶") w.eyes = "🕶";
+    return w;
+  }
+  // Що вдягнено — окремими значками поверх вихованця.
+  function wearBox(p, cls = "wear-box") {
+    const box = el("span", cls), w = p ? p.wear || {} : {};
+    ["body", "neck", "eyes", "hat", "hand"].forEach(k => { if (w[k]) box.append(el("span", "wear w-" + k, w[k])); });
+    return box;
+  }
   function hPet(p) {
     if (!p || typeof p !== "object" || !PETS[p.r]) return null;
     const kind = PETS[p.r].find(([e]) => e === p.e); if (!kind) return null;
     const n = x => clampN(x, 0, 9e15, 0);
-    return { e: p.e, r: p.r, name: clean(String(p.name || kind[1])).slice(0, 20), xp: clampN(p.xp, 0, 99999, 0), born: n(p.born), fed: n(p.fed), played: n(p.played), washed: n(p.washed), warm: n(p.warm), slept: n(p.slept), hat: ["🎩", "👒", "🧢", "👑", "🎓", "⛑", "🎀", "🕶", "🌸", "🎃", "🎅"].includes(p.hat) ? p.hat : "" };
+    return { e: p.e, r: p.r, name: clean(String(p.name || kind[1])).slice(0, 20), xp: clampN(p.xp, 0, 99999, 0), born: n(p.born), fed: n(p.fed), played: n(p.played), washed: n(p.washed), warm: n(p.warm), slept: n(p.slept), wear: wearOf(p), hat: wearOf(p).hat || "" };
   }
   function hPayload(d) {
     const rooms = d.rooms.map(r => ({ id: r.id, ic: r.ic, name: (clean(r.name).trim() || "Кімната").slice(0, 20), wall: r.wall, floor: r.floor, items: hSanitize(r.items) }));
@@ -2188,8 +2209,7 @@ function start() {
     const hunger = egg ? 100 : petBar(p.fed, 6), happy = egg ? 100 : petBar(p.played, 8), clean_ = egg ? 100 : petBar(p.washed, 4), energy = egg ? 100 : petBar(p.slept || 0, 5);
     const mood = egg ? "🥚" : hunger < 30 ? "🍖?" : clean_ < 30 ? "🫧?" : energy < 25 ? "💤?" : happy < 30 ? "🎾?" : "❤️";
     walk.hidden = false;
-    walk.textContent = egg ? "🥚" : p.e + (p.hat ? "" : "");
-    walk.dataset.hat = egg ? "" : (p.hat || "");
+    walk.replaceChildren(el("span", "pet-walk-face", egg ? "🥚" : p.e), ...(egg ? [] : [wearBox(p)]));
     walk.style.fontSize = `calc(${[70, 70, 95, 120, 140][lvl]} * var(--u))`;
     walk.dataset.mood = mood; walk.classList.toggle("egg", egg); walk.classList.toggle("legend", p.r === "l" && !egg);
     const head = el("div", "pet-head");
@@ -2255,7 +2275,7 @@ function start() {
   /* ---- Догляд за вихованцем: інтерактивна сцена ---- */
   const FOODS = [["🐟", 25, "😋"], ["🍖", 30, "😋"], ["🥛", 15, "😊"], ["🍪", 10, "😍"], ["🍎", 15, "😊"], ["🥕", 15, "😊"], ["🍕", 25, "😍"], ["🥦", 10, "🤢"]];
   const TOYS = [["⚽", "ball"], ["🧶", "yarn"], ["🪀", "yoyo"], ["🎈", "balloon"]];
-  const HATS = ["", "🎩", "👒", "🧢", "👑", "🎓", "⛑", "🎀", "🕶", "🌸", "🎃", "🎅"];
+  let wearSlot = "hat";
   const RATE = { fed: 6, washed: 4, played: 8, slept: 5 };
   // Значення шкали (0–100) зберігаємо як час: «коли шкала була повна».
   const petVal = (p, f) => petBar(p[f] || 0, RATE[f]);
@@ -2317,7 +2337,7 @@ function start() {
     $("#pp-pet").style.fontSize = `min(${[0, 6, 7.5, 9, 10][petStage(p)[1]] * big}rem, 70vw)`;
     $("#pp-pet").classList.toggle("legend", p.r === "l");
     $("#pp-pet").classList.toggle("sleep", pp.dark);
-    $("#pp-hat").textContent = p.hat || "";
+    $("#pp-wear").replaceWith(Object.assign(wearBox(p), { id: "pp-wear" }));
     $("#pp-dark").hidden = !pp.dark;
     // Бруд: що брудніший, то більше плям.
     const spots = Math.round((100 - v.washed) / 14), dirt = $("#pp-dirt");
@@ -2343,8 +2363,12 @@ function start() {
       tray.replaceChildren(b);
       $("#pp-hint").textContent = pp.dark ? "Ш-ш-ш… вихованець спить і набирається сил ⚡" : "Вимкни світло, щоб вихованець поспав";
     } else {
-      tray.replaceChildren(...HATS.map(h => { const b = el("button", "pp-item" + ((p.hat || "") === h ? " on" : ""), h || "🚫"); b.type = "button"; b.dataset.hat = h; b.title = h ? "Вдягнути" : "Зняти"; return b; }));
-      $("#pp-hint").textContent = "Обери шапку чи окуляри";
+      const w = p.wear || {};
+      const slots = el("div", "pp-slots");
+      slots.append(...Object.entries(WEAR).map(([k, [t]]) => { const b = el("button", "chip" + (w[k] ? " has" : ""), t); b.type = "button"; b.dataset.slot = k; b.setAttribute("aria-pressed", String(k === wearSlot)); return b; }));
+      const items = [""].concat(WEAR[wearSlot][1]).map(h => { const b = el("button", "pp-item" + ((w[wearSlot] || "") === h ? " on" : ""), h || "🚫"); b.type = "button"; b.dataset.wear = h; b.title = h ? "Вдягнути" : "Зняти"; return b; });
+      tray.replaceChildren(slots, ...items);
+      $("#pp-hint").textContent = "Вдягай шапки, окуляри, одяг і прикраси — тапни ще раз, щоб зняти";
     }
   }
   function ppEat(food) {
@@ -2390,6 +2414,8 @@ function start() {
   });
   $("#pp-tray").addEventListener("pointercancel", () => { if (ppDrag) { ppDrag.g.remove(); ppDrag = null; } });
   $("#pp-tray").addEventListener("click", e => {
+    const sl = e.target.closest("[data-slot]");
+    if (sl) { wearSlot = sl.dataset.slot; ppTray(); return; }
     const b = e.target.closest(".pp-item"); if (!b) return;
     const p = hData.pet;
     if (b.dataset.tool) {
@@ -2419,7 +2445,12 @@ function start() {
       }, 2000);
       ppSound(pp.dark ? 300 : 600, pp.dark ? 150 : 900, .2); ppRender(); ppTray(); return;
     }
-    if ("hat" in b.dataset) { p.hat = b.dataset.hat; ppSave(); ppRender(); ppTray(); ppEmote("😎", 1200); }
+    if ("wear" in b.dataset) {
+      const w = { ...(p.wear || {}) }, v = b.dataset.wear;
+      if (!v || w[wearSlot] === v) delete w[wearSlot]; else w[wearSlot] = v;
+      p.wear = w; p.hat = w.hat || "";
+      ppSave(); ppRender(); ppTray(); ppEmote(v ? "😎" : "😊", 1200); ppSound(700, 1100, .1, "triangle");
+    }
   });
   // Гладити й мити губкою: водимо пальцем по вихованцю.
   let ppStroke = null;
@@ -2486,7 +2517,7 @@ function start() {
     if (!show) { cancelAnimationFrame(compRaf); compRaf = null; return; }
     const egg = petStage(p)[1] === 0, big = { "🐹": 1.6 }[p.e] || 1;
     $("#comp-face").textContent = egg ? "🥚" : p.e;
-    $("#comp-hat").textContent = egg ? "" : (p.hat || "");
+    $("#comp-wear").replaceWith(Object.assign(egg ? el("span", "wear-box") : wearBox(p), { id: "comp-wear" }));
     comp.style.fontSize = `${(egg ? 2.6 : [0, 2.8, 3.2, 3.6, 4][petStage(p)[1]]) * (egg ? 1 : big)}rem`;
     comp.classList.toggle("legend", p.r === "l" && !egg);
     if (!cp.placed) {
