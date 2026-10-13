@@ -402,7 +402,7 @@ function start() {
     startPresence();
     setupDirectory(); setupChat(); setupGroups(); setupNews(); setupSchedule(); setupHints(); setupTools(); setupLibrary();
     setupProfiles(); setupUnread(); setupMyMute(); setupQuiz(); setupLog(); setupUpdates(); setupChatExtras(); if (!viewAs) recordVisit();
-    setupDMs(); setupNotes(); setupGames(); setupBoard(); setupSpolls(); setupPopup();
+    setupDMs(); setupStories(); setupNotes(); setupGames(); setupBoard(); setupSpolls(); setupPopup();
     $("#viewas-banner").hidden = !viewAs; $("#viewas-who").textContent = viewAs ? `учень ${viewAs} класу` : "";
     if (isAdmin || isMod) { setupReports(); setupRoster(); setupQbank(); }
     if (isAdmin) { setupAdmin(); setupStats(); setupInvites(); setupRetention(); setupViewAs(); }
@@ -1337,6 +1337,316 @@ function start() {
     } catch (e) { console.error(e); }
   }
 
+  /* ===== Історії (як в Instagram) ===== */
+  const STORY_TTL = 24 * 3600 * 1000, STORY_MAX_SEC = 15, PART = 680000;
+  let stories = [], storyQueue = [], svGroup = 0, svIdx = 0, svTimer = null, svRaf = null;
+  const storyBlobs = new Map(), storyGone = new Set();
+  const storyAge = s => Date.now() - (toDate(s.at) || new Date()).getTime();
+  function setupStories() {
+    portalSubs.push(onSnapshot(query(collection(db, "stories"), orderBy("at", "desc"), limit(300)), s => {
+      stories = s.docs.map(d => ({ id: d.id, ref: d.ref, ...d.data({ serverTimestamps: "estimate" }) }));
+      // Прострочені історії прибирає автор або модератор.
+      stories.filter(x => storyAge(x) > STORY_TTL && (x.uid === me.uid || isAdmin || isMod) && !storyGone.has(x.id))
+        .forEach(x => { storyGone.add(x.id); deleteStory(x.ref, x.parts).catch(() => {}); });
+      renderStoriesBar();
+    }, e => console.error(e)));
+    portalSubs.push(() => { stories = []; closeStory(); });
+  }
+  const liveStories = () => stories.filter(x => storyAge(x) <= STORY_TTL);
+  function storyGroups() {
+    const by = {};
+    liveStories().slice().reverse().forEach(x => { (by[x.uid] = by[x.uid] || []).push(x); });
+    return Object.entries(by).map(([uid, list]) => ({ uid, list, unseen: uid !== me.uid && list.some(x => !(x.seen || {})[me.uid]), last: Math.max(...list.map(x => (toDate(x.at) || new Date()).getTime())) }))
+      .sort((a, b) => (b.uid === me.uid) - (a.uid === me.uid) || b.unseen - a.unseen || b.last - a.last);
+  }
+  function storyAva(uid) { const p = profs[uid] || {}; return { emoji: p.emoji || "🙂", color: COLORS[p.color] || "" }; }
+  function renderStoriesBar() {
+    const box = $("#stories"); if (!box) return;
+    const groups = storyGroups(), chips = [];
+    if (!viewAs) {
+      const add = el("button", "story-chip add"); add.type = "button";
+      const ring = el("span", "story-ring"); ring.append(el("span", null, "＋"));
+      add.append(ring, el("small", null, "Твоя історія"));
+      add.addEventListener("click", openStoryNew);
+      chips.push(add);
+    }
+    groups.forEach((g, gi) => {
+      const b = el("button", "story-chip" + (g.unseen || g.uid === me.uid ? "" : " seen")); b.type = "button";
+      const a = storyAva(g.uid), ring = el("span", "story-ring"), face = el("span", null, a.emoji);
+      if (a.color) face.style.background = `color-mix(in srgb, ${a.color} 35%, var(--surface))`;
+      ring.append(face);
+      b.append(ring, el("small", null, g.uid === me.uid ? "Ти" : (dir[g.uid] ? dir[g.uid].name : g.list[0].name).split(" ")[0]));
+      b.setAttribute("aria-label", `Історії: ${g.list[0].name}`);
+      b.addEventListener("click", () => openStory(gi));
+      chips.push(b);
+    });
+    box.replaceChildren(...chips);
+    box.hidden = !chips.length;
+  }
+
+  // ---- Перегляд ----
+  function openStory(gi) {
+    storyQueue = storyGroups(); svGroup = gi;
+    const g = storyQueue[gi]; if (!g) return;
+    const firstUnseen = g.list.findIndex(x => !(x.seen || {})[me.uid]);
+    svIdx = g.uid !== me.uid && firstUnseen >= 0 ? firstUnseen : 0;
+    const dlg = $("#story-view"); if (!dlg.open) dlg.showModal();
+    showStory();
+  }
+  function stopStoryMedia() {
+    clearTimeout(svTimer); cancelAnimationFrame(svRaf);
+    $$("#sv-media video").forEach(v => v.pause());
+  }
+  function closeStory() { stopStoryMedia(); const d = $("#story-view"); if (d && d.open) d.close(); $("#sv-media").replaceChildren(); renderStoriesBar(); }
+  function stepStory(dir) {
+    const g = storyQueue[svGroup]; if (!g) return closeStory();
+    svIdx += dir;
+    if (svIdx >= g.list.length) { svGroup++; svIdx = 0; if (!storyQueue[svGroup]) return closeStory(); }
+    else if (svIdx < 0) { svGroup--; if (svGroup < 0) { svGroup = 0; svIdx = 0; } else svIdx = storyQueue[svGroup].list.length - 1; }
+    showStory();
+  }
+  async function storyUrl(s) {
+    if (storyBlobs.has(s.id)) return storyBlobs.get(s.id);
+    const snap = await getDocs(collection(db, "stories", s.id, "parts"));
+    const parts = snap.docs.filter(d => d.data().uid === s.uid).sort((a, b) => Number(a.id) - Number(b.id)).map(d => d.data().data);
+    if (parts.length < s.parts) throw new Error("parts");
+    const bin = atob(parts.join("")), bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const url = URL.createObjectURL(new Blob([bytes], { type: s.mime }));
+    storyBlobs.set(s.id, url);
+    return url;
+  }
+  function setBar(i, frac) { const b = $$("#sv-bars i b")[i]; if (b) b.style.width = Math.min(100, frac * 100) + "%"; }
+  async function showStory() {
+    stopStoryMedia();
+    const g = storyQueue[svGroup], s = g && g.list[svIdx]; if (!s) return closeStory();
+    const mine = s.uid === me.uid, a = storyAva(s.uid);
+    $("#sv-bars").replaceChildren(...g.list.map((_, i) => { const t = el("i"); const b = el("b"); b.style.width = i < svIdx ? "100%" : "0"; t.append(b); return t; }));
+    $("#sv-ava").textContent = a.emoji; $("#sv-ava").style.background = a.color || "";
+    $("#sv-name").textContent = mine ? "Ти" : s.name;
+    const ago = Math.max(1, Math.round(storyAge(s) / 60000));
+    $("#sv-time").textContent = ago < 60 ? `${ago} хв тому` : `${Math.round(ago / 60)} год тому`;
+    $("#sv-cap").textContent = s.caption ? clean(s.caption) : "";
+    const likes = Object.keys(s.likes || {}).length, views = Object.keys(s.seen || {}).length, liked = !!(s.likes || {})[me.uid];
+    $("#sv-like").textContent = liked ? "❤️" : "🤍"; $("#sv-like").hidden = mine;
+    $("#sv-views").textContent = mine ? `👁 ${views} · ❤️ ${likes}` : (likes ? `❤️ ${likes}` : "");
+    $("#sv-del").hidden = !(mine || isAdmin || isMod);
+    $("#sv-report").hidden = mine;
+    if (!mine && !(s.seen || {})[me.uid] && !viewAs) updateDoc(s.ref, { [`seen.${me.uid}`]: true }).catch(() => {});
+    const media = $("#sv-media"); media.replaceChildren(el("span", "muted", "Завантаження…"));
+    let url;
+    try { url = await storyUrl(s); } catch (e) { console.error(e); media.replaceChildren(el("span", "muted", "Не вдалося завантажити історію")); svTimer = setTimeout(() => stepStory(1), 2500); return; }
+    if (storyQueue[svGroup] !== g || g.list[svIdx] !== s) return;
+    if (s.kind === "img") {
+      const img = el("img"); img.src = url; img.alt = s.caption || "Історія"; media.replaceChildren(img);
+      const t0 = performance.now(), D = 5000;
+      const tick = () => { const f = (performance.now() - t0) / D; setBar(svIdx, f); if (f >= 1) stepStory(1); else svRaf = requestAnimationFrame(tick); };
+      svRaf = requestAnimationFrame(tick);
+    } else {
+      const v = el("video"); v.src = url; v.playsInline = true; v.autoplay = true; v.setAttribute("playsinline", "");
+      media.replaceChildren(v);
+      v.addEventListener("ended", () => stepStory(1));
+      v.play().catch(() => { v.muted = true; v.play().catch(() => {}); });
+      const tick = () => { const d = isFinite(v.duration) && v.duration ? v.duration : (s.dur || 15); setBar(svIdx, v.currentTime / d); svRaf = requestAnimationFrame(tick); };
+      svRaf = requestAnimationFrame(tick);
+    }
+  }
+  const curStory = () => { const g = storyQueue[svGroup]; return g && g.list[svIdx]; };
+  $("#sv-x").addEventListener("click", closeStory);
+  $("#story-view").addEventListener("cancel", e => { e.preventDefault(); closeStory(); });
+  $("#sv-next").addEventListener("click", () => stepStory(1));
+  $("#sv-prev").addEventListener("click", () => stepStory(-1));
+  $("#story-view").addEventListener("keydown", e => { if (e.key === "ArrowRight") stepStory(1); if (e.key === "ArrowLeft") stepStory(-1); });
+  $("#sv-like").addEventListener("click", () => {
+    const s = curStory(); if (!s || viewAs) return;
+    const on = !(s.likes || {})[me.uid];
+    s.likes = { ...(s.likes || {}) }; if (on) s.likes[me.uid] = true; else delete s.likes[me.uid];
+    $("#sv-like").textContent = on ? "❤️" : "🤍";
+    updateDoc(s.ref, { [`likes.${me.uid}`]: on ? true : deleteField() }).catch(e => { console.error(e); toast("Не вдалося"); });
+  });
+  $("#sv-del").addEventListener("click", async e => {
+    const b = e.currentTarget, s = curStory(); if (!s) return;
+    if (b.dataset.armed !== "1") { b.dataset.armed = "1"; b.textContent = "Точно?"; setTimeout(() => { b.dataset.armed = ""; b.textContent = "Видалити"; }, 3000); return; }
+    b.dataset.armed = ""; b.textContent = "Видалити";
+    try {
+      await deleteStory(s.ref, s.parts);
+      if (s.uid !== me.uid) logAction("Видалив історію", s.uid, s.name);
+      toast("Історію видалено"); closeStory();
+    } catch (ex) { console.error(ex); toast("Не вдалося видалити"); }
+  });
+  $("#sv-report").addEventListener("click", async e => {
+    const b = e.currentTarget, s = curStory(); if (!s) return;
+    if (b.dataset.armed !== "1") { b.dataset.armed = "1"; b.textContent = "Точно?"; setTimeout(() => { b.dataset.armed = ""; b.textContent = "Поскаржитися"; }, 3000); return; }
+    b.dataset.armed = ""; b.textContent = "Поскаржитися";
+    try {
+      await addDoc(collection(db, "reports"), { path: s.ref.path, text: (s.kind === "video" ? "🎬 Історія-відео" : "📷 Історія-фото") + (s.caption ? `: ${s.caption}` : ""), author: s.uid, authorName: s.name, by: me.uid, byName: profile.name, status: "open", createdAt: serverTimestamp() });
+      toast("Скаргу надіслано модераторам");
+    } catch (ex) { console.error(ex); toast("Не вдалося надіслати скаргу"); }
+  });
+  async function deleteStory(ref, parts = 5) {
+    const b = writeBatch(db);
+    for (let i = 0; i < Math.max(1, Math.min(5, parts || 5)); i++) b.delete(doc(db, ref.path, "parts", String(i)));
+    b.delete(ref);
+    await b.commit();
+  }
+
+  // ---- Нова історія ----
+  let snPending = null, snStream = null, snRec = null, snFacing = "user";
+  function snReset() {
+    snStopCam();
+    if (snPending && snPending.url) URL.revokeObjectURL(snPending.url);
+    snPending = null; $("#sn-post").disabled = true; $("#sn-err").textContent = "";
+    $("#sn-preview").replaceChildren(el("span", "muted small", "Обери фото чи відео або зніми нове."));
+    $("#sn-cam-ctl").hidden = true;
+  }
+  function openStoryNew() {
+    if (viewAs) { toast("У режимі перегляду публікувати не можна"); return; }
+    if (isMutedNow()) { toast("Ти в муті — зараз не можна публікувати"); return; }
+    snReset(); $("#sn-cap").value = "";
+    $("#story-new").showModal();
+  }
+  function snSetPending(p) {
+    if (snPending && snPending.url) URL.revokeObjectURL(snPending.url);
+    snPending = p; p.url = URL.createObjectURL(p.blob);
+    const prev = $("#sn-preview");
+    if (p.kind === "img") { const i = el("img"); i.src = p.url; i.alt = "Попередній перегляд"; prev.replaceChildren(i); }
+    else { const v = el("video"); v.src = p.url; v.controls = true; v.playsInline = true; v.setAttribute("playsinline", ""); prev.replaceChildren(v); }
+    $("#sn-post").disabled = false;
+  }
+  const snErr = t => { $("#sn-err").textContent = t || ""; };
+  $("#sn-cancel").addEventListener("click", () => { snReset(); $("#story-new").close(); });
+  $("#story-new").addEventListener("close", () => snStopCam());
+  $("#sn-photo").addEventListener("click", () => { snStopCam(); $("#sn-file-img").click(); });
+  $("#sn-video").addEventListener("click", () => { snStopCam(); $("#sn-file-vid").click(); });
+  $("#sn-file-img").addEventListener("change", async e => {
+    const f = e.target.files[0]; e.target.value = ""; if (!f) return; snErr();
+    try {
+      const data = await shrinkImage(f);
+      const blob = await (await fetch(data)).blob();
+      snSetPending({ kind: "img", blob, mime: "image/jpeg", dur: 5 });
+    } catch (ex) { console.error(ex); snErr("Не вдалося відкрити фото"); }
+  });
+  $("#sn-file-vid").addEventListener("change", async e => {
+    const f = e.target.files[0]; e.target.value = ""; if (!f) return; snErr();
+    $("#sn-post").disabled = true;
+    const prog = el("span", "muted small", "Обробляю відео…"); $("#sn-preview").replaceChildren(prog);
+    try {
+      const r = await transcodeVideo(f, sec => { prog.textContent = `Обробляю відео… ${Math.floor(sec)} з ${STORY_MAX_SEC} с`; });
+      snSetPending({ kind: "video", blob: r.blob, mime: r.mime, dur: r.dur });
+      if (r.cut) toast(`Відео обрізано до ${STORY_MAX_SEC} секунд`);
+    } catch (ex) { console.error(ex); snErr(ex.message === "big" ? "Відео завелике — спробуй коротше." : "Цей браузер не зміг обробити відео. Спробуй «Зняти відео»."); $("#sn-preview").replaceChildren(); }
+  });
+  const recType = () => ["video/webm;codecs=vp8,opus", "video/webm", "video/mp4"].find(t => window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || "";
+  // Перекодовує відео з галереї в маленьке (до 480 px, до 15 с), щоб воно вмістилося в базу.
+  async function transcodeVideo(file, onProgress) {
+    if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) throw new Error("unsupported");
+    const src = URL.createObjectURL(file), v = document.createElement("video");
+    v.src = src; v.playsInline = true; v.preload = "auto";
+    try {
+      await new Promise((res, rej) => { v.onloadedmetadata = res; v.onerror = () => rej(new Error("load")); });
+      const k = Math.min(1, 480 / Math.max(v.videoWidth || 480, v.videoHeight || 480));
+      const c = document.createElement("canvas");
+      c.width = Math.max(2, Math.round((v.videoWidth || 480) * k / 2) * 2); c.height = Math.max(2, Math.round((v.videoHeight || 480) * k / 2) * 2);
+      const g = c.getContext("2d"), stream = c.captureStream(24);
+      let ac = null;
+      try {
+        ac = new (window.AudioContext || window.webkitAudioContext)();
+        const dest = ac.createMediaStreamDestination();
+        ac.createMediaElementSource(v).connect(dest);
+        dest.stream.getAudioTracks().forEach(t => stream.addTrack(t));
+      } catch (e) { console.warn("audio", e); v.muted = true; }
+      const type = recType(), chunks = [];
+      const mr = new MediaRecorder(stream, { ...(type ? { mimeType: type } : {}), videoBitsPerSecond: 450000, audioBitsPerSecond: 32000 });
+      mr.ondataavailable = ev => { if (ev.data.size) chunks.push(ev.data); };
+      const limit = Math.min(isFinite(v.duration) ? v.duration : STORY_MAX_SEC, STORY_MAX_SEC);
+      const done = new Promise(res => { mr.onstop = res; });
+      try { await v.play(); } catch { v.muted = true; await v.play(); }
+      if (ac && ac.state === "suspended") await ac.resume().catch(() => {});
+      mr.start(500);
+      await new Promise(res => {
+        const draw = () => {
+          g.drawImage(v, 0, 0, c.width, c.height); onProgress && onProgress(v.currentTime);
+          if (v.ended || v.currentTime >= limit) return res();
+          requestAnimationFrame(draw);
+        };
+        draw();
+      });
+      v.pause(); mr.stop(); await done;
+      ac && ac.close().catch(() => {});
+      const blob = new Blob(chunks, { type: (mr.mimeType || type || "video/webm").split(";")[0] });
+      if (blob.size > PART * 5 * 3 / 4) throw new Error("big");
+      return { blob, mime: blob.type || "video/webm", dur: Math.round(Math.min(limit, v.currentTime) * 10) / 10, cut: isFinite(v.duration) && v.duration > STORY_MAX_SEC + 0.5 };
+    } finally { URL.revokeObjectURL(src); }
+  }
+  // ---- Камера ----
+  async function snStartCam() {
+    snStopCam();
+    if (!navigator.mediaDevices || !window.MediaRecorder) { snErr("Цей браузер не вміє знімати відео"); return; }
+    try { snStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: snFacing, width: { ideal: 480 }, height: { ideal: 640 } }, audio: true }); }
+    catch (e) { console.error(e); snErr("Дозволь доступ до камери й мікрофона в налаштуваннях браузера"); return; }
+    const v = el("video"); v.muted = true; v.playsInline = true; v.autoplay = true; v.setAttribute("playsinline", ""); v.srcObject = snStream;
+    $("#sn-preview").replaceChildren(v); v.play().catch(() => {});
+    $("#sn-cam-ctl").hidden = false; $("#sn-rec").textContent = "⏺ Почати запис"; $("#sn-rec").classList.remove("rec"); $("#sn-rec-t").textContent = "";
+    $("#sn-post").disabled = true;
+  }
+  function snStopCam() {
+    if (snRec) { snRec.cancel = true; clearInterval(snRec.timer); try { snRec.mr.stop(); } catch {} snRec = null; }
+    if (snStream) { snStream.getTracks().forEach(t => t.stop()); snStream = null; }
+  }
+  $("#sn-cam").addEventListener("click", () => { snErr(); snStartCam(); });
+  $("#sn-flip").addEventListener("click", () => { if (snRec) return; snFacing = snFacing === "user" ? "environment" : "user"; snStartCam(); });
+  $("#sn-rec").addEventListener("click", () => {
+    if (snRec) { snRec.mr.stop(); return; }
+    if (!snStream) return;
+    const type = recType(), chunks = [];
+    const mr = new MediaRecorder(snStream, { ...(type ? { mimeType: type } : {}), videoBitsPerSecond: 450000, audioBitsPerSecond: 32000 });
+    const rec = snRec = { mr, t0: Date.now() };
+    mr.ondataavailable = ev => { if (ev.data.size) chunks.push(ev.data); };
+    mr.onstop = () => {
+      clearInterval(rec.timer);
+      const dur = Math.min(STORY_MAX_SEC, (Date.now() - rec.t0) / 1000);
+      if (snRec === rec) snRec = null;
+      if (rec.cancel) return;
+      if (snStream) { snStream.getTracks().forEach(t => t.stop()); snStream = null; }
+      $("#sn-cam-ctl").hidden = true;
+      if (dur < 1) { snErr("Запис закороткий"); return; }
+      const blob = new Blob(chunks, { type: (mr.mimeType || type || "video/webm").split(";")[0] });
+      if (blob.size > PART * 5 * 3 / 4) { snErr("Відео завелике — спробуй коротше."); return; }
+      snSetPending({ kind: "video", blob, mime: blob.type || "video/webm", dur: Math.round(dur * 10) / 10 });
+    };
+    mr.start(500);
+    $("#sn-rec").textContent = "⏹ Зупинити"; $("#sn-rec").classList.add("rec");
+    rec.timer = setInterval(() => {
+      const t = (Date.now() - rec.t0) / 1000;
+      $("#sn-rec-t").textContent = `${Math.floor(t)} / ${STORY_MAX_SEC} с`;
+      if (t >= STORY_MAX_SEC) mr.stop();
+    }, 200);
+  });
+  // ---- Публікація ----
+  async function blobToB64(blob) {
+    const buf = new Uint8Array(await blob.arrayBuffer());
+    let s = "";
+    for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+    return btoa(s);
+  }
+  $("#sn-post").addEventListener("click", async () => {
+    const p = snPending; if (!p) return;
+    const btn = $("#sn-post"); btn.disabled = true; btn.textContent = "Публікую…"; snErr();
+    try {
+      const b64 = await blobToB64(p.blob), parts = [];
+      for (let i = 0; i < b64.length; i += PART) parts.push(b64.slice(i, i + PART));
+      if (parts.length > 5) throw new Error("big");
+      const ref = doc(collection(db, "stories")), batch = writeBatch(db);
+      parts.forEach((data, i) => batch.set(doc(db, "stories", ref.id, "parts", String(i)), { uid: me.uid, data }));
+      const cap = clean($("#sn-cap").value.trim()).slice(0, 120);
+      batch.set(ref, { uid: me.uid, name: profile.name, kind: p.kind, mime: p.mime, parts: parts.length, dur: Math.min(16, p.dur || 0), ...(cap ? { caption: cap } : {}), cls: myClass() || 0, seen: {}, likes: {}, at: serverTimestamp() });
+      await batch.commit();
+      storyBlobs.set(ref.id, URL.createObjectURL(p.blob));
+      snReset(); $("#story-new").close(); toast("Історію опубліковано ✨");
+    } catch (ex) { console.error(ex); snErr(ex.message === "big" ? "Файл завеликий — спробуй коротше відео." : isMutedNow() ? "Ти в муті — зараз не можна публікувати." : "Не вдалося опублікувати. Перевір інтернет."); }
+    finally { btn.textContent = "Опублікувати"; btn.disabled = !snPending; }
+  });
+
   /* ===== Учні: порівняння списку класу з тими, хто на порталі ===== */
   let rosters = {}, roCls = null;
   function setupRoster() {
@@ -1437,7 +1747,7 @@ function start() {
         if (p.bday && !$("#pf-day").value && !$("#pf-month").value) { const [m, d] = p.bday.split("-").map(Number); $("#pf-day").value = String(d); $("#pf-month").value = String(m); }
         pfLoaded = true;
       }
-      renderProfileForm(); renderBday(); if (!$("#p-profile").hidden) renderProfileView();
+      renderProfileForm(); renderBday(); renderStoriesBar(); if (!$("#p-profile").hidden) renderProfileView();
       if (lastDocs) renderMessages(lastDocs, lastKind);
     }, e => console.error(e)));
     portalSubs.push(() => { pfLoaded = false; pfEmoji = null; pfColor = null; pfFrame = null; profs = {}; lastDocs = null; myQuizTotal = 0; });
@@ -1906,13 +2216,13 @@ function start() {
     if (!n) { box.append(emptyEl("Скарг немає 👍")); return; }
     reports.forEach(d => {
       const r = d.data({ serverTimestamps: "estimate" });
-      const place = r.path.startsWith("classes/") ? `чат ${r.path.split("/")[1]} класу` : "окремий чат";
+      const place = r.path.startsWith("classes/") ? `чат ${r.path.split("/")[1]} класу` : r.path.startsWith("stories/") ? "історія" : r.path.startsWith("dms/") ? "особисті" : "окремий чат";
       const card = el("article", "post");
       const top = el("div", "top-line"); top.append(el("h3", null, `Скарга на: ${r.authorName}`), pill(place, "warn"));
       const acts = el("div", "acts");
       const done = async (action) => { await updateDoc(d.ref, { status: "done" }); logAction(action, r.author, r.authorName); };
-      if (isAdmin || r.path.startsWith("classes/")) acts.append(confirmButton("Видалити повідомлення", "btn badb sm", async () => {
-        await deleteDoc(doc(db, r.path)).catch(e => console.error(e));
+      if (isAdmin || /^(classes|stories|dms)\//.test(r.path)) acts.append(confirmButton(r.path.startsWith("stories/") ? "Видалити історію" : "Видалити повідомлення", "btn badb sm", async () => {
+        await (r.path.startsWith("stories/") ? deleteStory(doc(db, r.path)) : deleteDoc(doc(db, r.path))).catch(e => console.error(e));
         await done("Видалив повідомлення за скаргою"); toast("Повідомлення видалено");
       }));
       const keep = el("button", "btn ghost sm", "Залишити"); keep.type = "button";

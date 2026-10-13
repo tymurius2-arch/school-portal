@@ -475,6 +475,42 @@ service cloud.firestore {
       }
     }
 
+    // Історії (як в Instagram): фото чи відео до 15 с, зникають через 24 год.
+    // Файл ділиться на частини (stories/{id}/parts/0, 1, …), бо документ не може бути більшим за 1 МБ.
+    match /stories/{sid} {
+      allow read: if approved() || isAdmin();
+      allow create: if (approved() || isAdmin()) && hasProfile() && !muted()
+        && request.resource.data.keys().hasOnly(['uid', 'name', 'kind', 'mime', 'parts', 'dur', 'caption', 'cls', 'seen', 'likes', 'at'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.name == me().name
+        && request.resource.data.kind in ['img', 'video']
+        && shortText(request.resource.data.mime, 5, 60)
+        && (request.resource.data.mime.matches('image/.*') || request.resource.data.mime.matches('video/.*'))
+        && request.resource.data.parts is int && request.resource.data.parts >= 1 && request.resource.data.parts <= 5
+        && request.resource.data.dur is number && request.resource.data.dur >= 0 && request.resource.data.dur <= 16
+        && (!('caption' in request.resource.data) || shortText(request.resource.data.caption, 0, 120))
+        && request.resource.data.cls is int
+        && request.resource.data.seen == {} && request.resource.data.likes == {}
+        && request.resource.data.at == request.time;
+      // Переглядачі ставлять лише свою позначку «бачив» і свій лайк.
+      allow update: if (approved() || isAdmin())
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['seen', 'likes'])
+        && request.resource.data.seen.diff(resource.data.seen).affectedKeys().hasOnly([request.auth.uid])
+        && request.resource.data.likes.diff(resource.data.likes).affectedKeys().hasOnly([request.auth.uid])
+        && (!(request.auth.uid in request.resource.data.seen) || request.resource.data.seen[request.auth.uid] == true)
+        && (!(request.auth.uid in request.resource.data.likes) || request.resource.data.likes[request.auth.uid] == true);
+      allow delete: if isStaff() || (signedIn() && resource.data.uid == request.auth.uid);
+      match /parts/{n} {
+        allow read: if approved() || isAdmin();
+        allow create: if (approved() || isAdmin())
+          && request.resource.data.keys().hasOnly(['uid', 'data'])
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.data is string && request.resource.data.data.size() <= 700000
+          && getAfter(/databases/$(database)/documents/stories/$(sid)).data.uid == request.auth.uid;
+        allow delete: if isStaff() || (signedIn() && resource.data.uid == request.auth.uid);
+      }
+    }
+
     // Хрестики-нулики: двоє гравців, ходять по черзі.
     match /games/{id} {
       allow read: if signedIn() && request.auth.uid in resource.data.players;
