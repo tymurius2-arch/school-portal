@@ -435,16 +435,20 @@
         <div class="row h-bar" id="h-bar">
           <button class="btn ghost sm" type="button" id="h-back" hidden>← До списку</button>
           <button class="btn sm" type="button" id="h-edit-btn">✏️ Прикрашати</button>
+          <button class="btn ghost sm" type="button" id="h-wheel">🎡 Колесо удачі</button>
           <button class="btn ghost sm" type="button" id="h-like" hidden>🤍 Подобається</button>
           <span class="muted small" id="h-likes"></span>
           <span class="muted small h-status" id="h-status"></span>
           <button class="btn ghost sm" type="button" id="h-report" hidden>Поскаржитися</button>
           <button class="btn ghost sm" type="button" id="h-reset" hidden>🧹 Скинути дім</button>
         </div>
+        <div class="chips h-rooms" id="h-rooms" aria-label="Кімнати"></div>
+        <div class="row h-addroom" id="h-addroom" hidden></div>
         <div class="house" id="house">
           <div class="house-wall" id="h-wall"></div>
           <div class="house-floor" id="h-floor"></div>
           <div class="house-items" id="h-items"></div>
+          <div class="pet-walk" id="h-pet-walk" hidden aria-hidden="true"></div>
           <p class="house-empty" id="h-empty" hidden>Тут ще ніхто не живе 🏚</p>
         </div>
         <div class="h-tools" id="h-tools" hidden>
@@ -457,8 +461,13 @@
           <button class="icon-btn" type="button" data-a="text" title="Змінити напис" aria-label="Змінити напис">✏️</button>
           <button class="icon-btn" type="button" data-a="delete" title="Прибрати" aria-label="Прибрати">🗑</button>
         </div>
+        <div class="card stack pet-card" id="h-pet" hidden></div>
         <div class="card stack h-edit" id="h-edit" hidden>
           <label for="h-name">Назва дому<input id="h-name" maxlength="40"></label>
+          <div class="row" style="align-items:end">
+            <label for="h-room-name">Назва кімнати<input id="h-room-name" maxlength="20"></label>
+            <button class="btn ghost sm" type="button" id="h-room-del">🗑 Видалити кімнату</button>
+          </div>
           <span class="eyebrow">Обої</span>
           <div class="h-swatches" id="h-walls"></div>
           <span class="eyebrow">Підлога</span>
@@ -784,6 +793,18 @@
     <div class="ip-mine" id="ip-mine"></div>
     <p class="err" role="alert" id="ip-err"></p>
     <button class="btn ghost" type="button" id="ip-cancel">Скасувати</button>
+  </div>
+</dialog>
+<dialog class="story-new wheel-dlg" id="wheel-dlg" aria-labelledby="wheel-title">
+  <div class="stack" style="justify-items:center; text-align:center">
+    <h3 id="wheel-title">🎡 Колесо удачі</h3>
+    <p class="muted small">Раз на день: рідкісні речі для дому, обої й ласощі для вихованця.</p>
+    <div class="wheel-box"><div class="wheel-pin">▼</div><div class="wheel" id="wheel"></div></div>
+    <p class="wheel-res" id="wheel-res" aria-live="polite"></p>
+    <div class="row" style="justify-content:center">
+      <button class="btn" type="button" id="wheel-go">🎡 Крутити!</button>
+      <button class="btn ghost" type="button" id="wheel-x">Закрити</button>
+    </div>
   </div>
 </dialog>
 <dialog class="upd-full" id="upd-full" aria-labelledby="uf-title">
