@@ -402,7 +402,7 @@ function start() {
     startPresence();
     setupDirectory(); setupChat(); setupGroups(); setupNews(); setupSchedule(); setupHints(); setupTools(); setupLibrary();
     setupProfiles(); setupUnread(); setupMyMute(); setupQuiz(); setupLog(); setupUpdates(); setupChatExtras(); if (!viewAs) recordVisit();
-    setupDMs(); setupStories(); setupHouse(); setupNotes(); setupGames(); setupBoard(); setupSpolls(); setupPopup();
+    setupDMs(); setupStories(); setupHouse(); setupCompanion(); setupNotes(); setupGames(); setupBoard(); setupSpolls(); setupPopup();
     $("#viewas-banner").hidden = !viewAs; $("#viewas-who").textContent = viewAs ? `учень ${viewAs} класу` : "";
     if (isAdmin || isMod) { setupReports(); setupRoster(); setupQbank(); }
     if (isAdmin) { setupAdmin(); setupStats(); setupInvites(); setupRetention(); setupViewAs(); }
@@ -419,7 +419,7 @@ function start() {
     if (id === "updates") { updSeenAtOpen = 0; markUpdatesSeen(); renderUpdates(); }
     if (id === "chat") { scrollChat(true); if (typeof markRead === "function") markRead(curKey()); }
   }
-  $$(".tab").forEach(t => t.addEventListener("click", () => { if (t.dataset.tab === "profile") pvUid = null; openTab(t.dataset.tab); }));
+  $$(".tab").forEach(t => t.addEventListener("click", () => { if (t.dataset.tab === "profile") pvUid = null; openTab(t.dataset.tab); compFollow(t); }));
 
   /* ----- Список учасників (для запрошень і модерації) ----- */
   let dir = {}, dirReady = false;
@@ -2274,7 +2274,7 @@ function start() {
   function openPetPlay() {
     const p = hData && hData.pet; if (!p || petStage(p)[1] === 0) return;
     pp.mode = "food"; pp.dark = false; pp.rub = 0;
-    $("#pet-play").showModal(); ppRender(); ppTray();
+    $("#pet-play").showModal(); ppRender(); ppTray(); renderCompanion();
   }
   function ppClose() {
     clearInterval(pp.sleepT); pp.sleepT = null; pp.dark = false;
@@ -2463,6 +2463,109 @@ function start() {
   $("#pp-x").addEventListener("click", ppClose);
   $("#pet-play").addEventListener("cancel", e => { e.preventDefault(); ppClose(); });
   setInterval(() => { if ($("#pet-play").open) ppRender(); }, 15000);
+  /* ---- Вихованець-компаньйон: гуляє по екрану на всіх вкладках ---- */
+  let myPet = null, compT = null, compPause = 0, compDrag = null, compLong = null;
+  const comp = $("#companion");
+  const compOn = () => store.get("companion", true);
+  $("#companion-on").checked = compOn();
+  $("#companion-on").addEventListener("change", e => { store.set("companion", e.target.checked); renderCompanion(); });
+  function setupCompanion() {
+    portalSubs.push(onSnapshot(doc(db, "houses", me.uid), s => { myPet = s.exists() ? hPet(s.data().pet) : null; renderCompanion(); }, () => {}));
+    portalSubs.push(() => { myPet = null; renderCompanion(); });
+    clearInterval(compT); compT = setInterval(compWander, 4500);
+    portalSubs.push(() => clearInterval(compT));
+  }
+  // Свіжі зміни з догляду показуємо одразу, ще до збереження.
+  const compPetNow = () => (hData && hMine() && hData.pet) || myPet;
+  function renderCompanion() {
+    const p = compPetNow();
+    const show = inPortal && compOn() && !!p && !viewAs && !$("#pet-play").open;
+    comp.hidden = !show; if (!show) return;
+    const egg = petStage(p)[1] === 0, big = { "🐹": 1.6 }[p.e] || 1;
+    $("#comp-face").textContent = egg ? "🥚" : p.e;
+    $("#comp-hat").textContent = egg ? "" : (p.hat || "");
+    comp.style.fontSize = `${(egg ? 2.6 : [0, 2.8, 3.2, 3.6, 4][petStage(p)[1]]) * (egg ? 1 : big)}rem`;
+    comp.classList.toggle("legend", p.r === "l" && !egg);
+    if (!comp.dataset.placed) {
+      const pos = store.get("companionPos", null);
+      compMove(pos ? pos[0] : innerWidth * .75, pos ? pos[1] : innerHeight - 90, false);
+      comp.dataset.placed = "1";
+    }
+  }
+  function compMove(x, y, walk = true) {
+    const w = comp.offsetWidth || 60, h = comp.offsetHeight || 60;
+    x = Math.max(4, Math.min(innerWidth - w - 4, x)); y = Math.max(60, Math.min(innerHeight - h - 4, y));
+    const ox = parseFloat(comp.style.left) || x;
+    comp.classList.toggle("walk", walk);
+    comp.classList.toggle("left", x < ox);
+    comp.style.left = x + "px"; comp.style.top = y + "px";
+  }
+  function compWander() {
+    if (comp.hidden || compDrag || Date.now() < compPause || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const p = compPetNow(); if (!p || petStage(p)[1] === 0) return;
+    const x = parseFloat(comp.style.left) || 0, y = parseFloat(comp.style.top) || 0;
+    compMove(x + (Math.random() - .5) * 220, y + (Math.random() - .5) * 40);
+    setTimeout(() => comp.classList.remove("walk"), 1600);
+    if (Math.random() < .25) compSay(compNeed(p) || ["❤️", "🎵", "✨", "😊"][Math.floor(Math.random() * 4)]);
+  }
+  function compNeed(p) {
+    if (petStage(p)[1] === 0) return "🥚";
+    return petBar(p.fed, 6) < 40 ? "🍖" : petBar(p.washed, 4) < 40 ? "🧼" : petBar(p.slept || 0, 5) < 30 ? "😪" : petBar(p.played, 8) < 40 ? "🎾" : "";
+  }
+  function compSay(t, ms = 2200) {
+    const b = $("#comp-say"); b.textContent = t; b.hidden = false;
+    clearTimeout(compSay.t); compSay.t = setTimeout(() => { b.hidden = true; }, ms);
+  }
+  // Коли перемикаєш вкладку — вихованець біжить слідом.
+  function compFollow(tabBtn) {
+    if (comp.hidden || !tabBtn || Date.now() < compPause) return;
+    const r = tabBtn.getBoundingClientRect();
+    compMove(r.left + r.width / 2 - comp.offsetWidth / 2, Math.min(innerHeight - comp.offsetHeight - 4, r.bottom + 20));
+    setTimeout(() => comp.classList.remove("walk"), 1600);
+    compSay(["🏃", "👀", "😄", "🐾"][Math.floor(Math.random() * 4)], 1200);
+  }
+  comp.addEventListener("pointerdown", e => {
+    e.preventDefault();
+    comp.setPointerCapture(e.pointerId);
+    const r = comp.getBoundingClientRect();
+    compDrag = { dx: e.clientX - r.left, dy: e.clientY - r.top, sx: e.clientX, sy: e.clientY, moved: false };
+    comp.classList.add("held"); comp.classList.remove("walk");
+    compLong = setTimeout(() => { if (compDrag && !compDrag.moved) { compDrag = null; comp.classList.remove("held"); compOpenCare(); } }, 650);
+  });
+  comp.addEventListener("pointermove", e => {
+    if (!compDrag) return;
+    if (Math.hypot(e.clientX - compDrag.sx, e.clientY - compDrag.sy) > 6) { compDrag.moved = true; clearTimeout(compLong); }
+    if (!compDrag.moved) return;
+    comp.style.transition = "none";
+    comp.style.left = (e.clientX - compDrag.dx) + "px"; comp.style.top = (e.clientY - compDrag.dy) + "px";
+    if (!compDrag.said) { compDrag.said = true; compSay("😲 Ой-ой!", 900); }
+  });
+  const compUp = () => {
+    clearTimeout(compLong);
+    if (!compDrag) return;
+    const d = compDrag; compDrag = null; comp.classList.remove("held"); comp.style.transition = "";
+    if (d.moved) {
+      compMove(parseFloat(comp.style.left), parseFloat(comp.style.top), false);
+      store.set("companionPos", [parseFloat(comp.style.left), parseFloat(comp.style.top)]);
+      compPause = Date.now() + 15000; compSay("😵‍💫", 1000);
+      comp.classList.remove("drop"); void comp.offsetWidth; comp.classList.add("drop");
+      return;
+    }
+    // Простий тап: стрибок і що хоче.
+    comp.classList.remove("hop"); void comp.offsetWidth; comp.classList.add("hop");
+    const p = compPetNow(); compSay(p ? (compNeed(p) || "❤️") : "❤️", 1400);
+    if (p && soundOn) ppSound(600, 1000, .12, "triangle");
+  };
+  comp.addEventListener("pointerup", compUp);
+  comp.addEventListener("pointercancel", compUp);
+  async function compOpenCare() {
+    openTab("house");
+    if (hView !== me.uid) openHouse(me.uid);
+    for (let i = 0; i < 30 && !(hData && hMine() && hData.pet); i++) await new Promise(r => setTimeout(r, 100));
+    if (hData && hData.pet && petStage(hData.pet)[1] > 0) openPetPlay(); else compSay("🥚 Спершу вилупи мене!", 2000);
+  }
+  window.addEventListener("resize", () => { if (!comp.hidden) compMove(parseFloat(comp.style.left), parseFloat(comp.style.top), false); });
+  $("#pet-play").addEventListener("close", renderCompanion);
   setInterval(() => { if (hData && !$("#p-house").hidden) renderPet(); }, 60000);
 
   // ---- Колесо удачі (раз на день) ----

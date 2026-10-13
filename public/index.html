@@ -599,6 +599,7 @@
       <div class="card stack">
         <h3>Сповіщення</h3>
         <label class="inline" for="msg-sound"><input type="checkbox" id="msg-sound" style="width:auto"> Звук нових повідомлень</label>
+        <label class="inline" for="companion-on"><input type="checkbox" id="companion-on" style="width:auto"> 🐾 Вихованець гуляє по екрану</label>
         <div class="row" style="align-items:center">
           <button class="btn ghost sm" type="button" id="b-notif">🔔 Увімкнути сповіщення</button>
           <span class="muted small" id="notif-state"></span>
@@ -838,6 +839,9 @@
     </div>
   </div>
 </dialog>
+<div class="companion" id="companion" hidden title="Тягни мене! Довге натискання — догляд" role="button" aria-label="Твій вихованець: тягни, тапни або натисни й тримай для догляду">
+  <span class="comp-say" id="comp-say" hidden></span><span class="comp-hat" id="comp-hat"></span><span class="comp-face" id="comp-face"></span>
+</div>
 <div class="season-fx" id="season-fx" aria-hidden="true"></div>
 
 <template id="tpl-profile">
