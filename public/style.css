@@ -663,3 +663,4 @@ input.bad{border-color:var(--bad); background:color-mix(in srgb,var(--bad) 20%,v
 .pp-pet,.comp-body,.pet-walk{isolation:isolate}
 .pp-slots{display:flex; gap:6px; flex-wrap:wrap; justify-content:center; width:100%}
 .pp-slots .chip.has::after{content:" ✓"; color:var(--ok)}
+.chip-sep{width:1px; align-self:stretch; background:var(--line); margin:0 4px}
