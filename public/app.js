@@ -2192,9 +2192,10 @@ function start() {
     walk.style.fontSize = `calc(${[70, 70, 95, 120, 140][lvl]} * var(--u))`;
     walk.dataset.mood = mood; walk.classList.toggle("egg", egg); walk.classList.toggle("legend", p.r === "l" && !egg);
     const head = el("div", "pet-head");
-    const ava = el("div", "pet-ava" + (p.r === "l" && !egg ? " legend" : ""), egg ? "🥚" : p.e);
+    const ava = el("div", "pet-ava" + (p.r === "l" && !egg ? " legend" : "") + (egg ? " egg" : ""), egg ? "🥚" : p.e);
+    if (egg && mine && !viewAs) ava.addEventListener("click", eggTap);
     const info = el("div");
-    info.append(el("b", null, egg ? "Яйце вихованця" : `${p.name}`), el("span", "muted small", egg ? `Грій яйце: ${p.xp} з 3 — і хтось вилупиться!` : `${stage} · ${RARITY[p.r]} · досвід ${p.xp}`));
+    info.append(el("b", null, egg ? "Яйце вихованця" : `${p.name}`), el("span", "muted small", egg ? `Грій яйце: ${p.xp} з 3 — і хтось вилупиться! Щоразу тапни 10 разів 👆` : `${stage} · ${RARITY[p.r]} · досвід ${p.xp}`));
     head.append(ava, info);
     if (mine && !egg && !viewAs) { const rn = el("button", "btn ghost sm", "✏️"); rn.type = "button"; rn.title = "Перейменувати"; rn.addEventListener("click", () => { const n = clean((prompt("Як звати вихованця?", p.name) || "").trim()).slice(0, 20); if (n) { p.name = n; hChanged(false); renderPet(); } }); head.append(rn); }
     const parts = [el("h3", null, "🐾 Вихованець"), head];
@@ -2209,13 +2210,26 @@ function start() {
       const acts = el("div", "row pet-acts");
       (egg ? ["warm"] : ["feed", "play", "wash"]).forEach(k => {
         const a = ACTIONS[k], left = p[a.field] + a.cd - Date.now();
-        const b = el("button", "btn sm" + (left > 0 ? " ghost" : ""), left > 0 ? `${a.label} · ${Math.ceil(left / MIN)} хв` : a.label); b.type = "button"; b.disabled = left > 0;
-        b.addEventListener("click", () => petAct(k)); acts.append(b);
+        const label = k === "warm" && left <= 0 ? `🔥 Гріти яйце: тапни ${EGG_TAPS - eggTaps} раз${EGG_TAPS - eggTaps === 1 ? "" : "ів"}` : a.label;
+        const b = el("button", "btn sm" + (left > 0 ? " ghost" : ""), left > 0 ? `${a.label} · ${Math.ceil(left / MIN)} хв` : label); b.type = "button"; b.disabled = left > 0;
+        b.addEventListener("click", () => k === "warm" ? eggTap() : petAct(k)); acts.append(b);
       });
       if (!egg) { const t = el("button", "btn sm ghost", `🍬 Ласощі (${hData.inv.treats})`); t.type = "button"; t.disabled = !hData.inv.treats; t.title = "+5 досвіду. Ласощі виграєш у колесі удачі"; t.addEventListener("click", () => petAct("treat")); acts.append(t); }
       parts.push(acts);
     }
     box.replaceChildren(...parts);
+  }
+  // Щоб погріти яйце, треба тапнути 10 разів поспіль.
+  const EGG_TAPS = 10;
+  let eggTaps = 0;
+  function eggTap() {
+    const p = hData && hData.pet; if (!p || !hMine()) return;
+    if (Date.now() - p.warm < ACTIONS.warm.cd) return;
+    eggTaps++;
+    const ava = $("#h-pet .pet-ava"); if (ava) { ava.classList.remove("tap"); void ava.offsetWidth; ava.classList.add("tap"); }
+    if (eggTaps >= EGG_TAPS) { eggTaps = 0; petAct("warm"); return; }
+    const b = $("#h-pet .pet-acts button");
+    if (b) b.textContent = `🔥 Гріти яйце: тапни ${EGG_TAPS - eggTaps} раз${EGG_TAPS - eggTaps === 1 ? "" : "ів"}`;
   }
   function adoptPet() {
     const roll = Math.random(), r = roll < .05 ? "l" : roll < .3 ? "r" : "c", list = PETS[r], [e, name] = list[Math.floor(Math.random() * list.length)];
