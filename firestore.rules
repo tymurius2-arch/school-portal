@@ -511,6 +511,46 @@ service cloud.firestore {
       }
     }
 
+    // Віртуальний дім: кімната з обоями, підлогою й предметами. Прикрашає лише власник.
+    function houseSurface(m) {
+      return m is map && m.keys().hasOnly(['k', 'v', 'rep'])
+        && m.k in ['p', 'up', 'url'] && shortText(m.v, 1, 500)
+        && (m.k != 'url' || m.v.matches('https://[-A-Za-z0-9._~:/?#@!$&*+,;=%]+'))
+        && (!('rep' in m) || m.rep is bool);
+    }
+    match /houses/{uid} {
+      allow read: if approved() || isAdmin();
+      allow create: if (approved() || isAdmin()) && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['name', 'wall', 'floor', 'items', 'likes', 'at'])
+        && shortText(request.resource.data.name, 1, 40)
+        && houseSurface(request.resource.data.wall) && houseSurface(request.resource.data.floor)
+        && request.resource.data.items is list && request.resource.data.items.size() <= 60
+        && request.resource.data.likes == {}
+        && request.resource.data.at == request.time;
+      allow update: if (approved() || isAdmin()) && request.auth.uid == uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'wall', 'floor', 'items', 'at'])
+        && shortText(request.resource.data.name, 1, 40)
+        && houseSurface(request.resource.data.wall) && houseSurface(request.resource.data.floor)
+        && request.resource.data.items is list && request.resource.data.items.size() <= 60
+        && request.resource.data.at == request.time;
+      // Гості ставлять лише свій лайк.
+      allow update: if (approved() || isAdmin()) && request.auth.uid != uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes'])
+        && request.resource.data.likes.diff(resource.data.likes).affectedKeys().hasOnly([request.auth.uid])
+        && (!(request.auth.uid in request.resource.data.likes) || request.resource.data.likes[request.auth.uid] == true);
+      allow delete: if isStaff() || (signedIn() && request.auth.uid == uid);
+      // Свої картинки (стиснені), до ~150 КБ кожна.
+      match /imgs/{id} {
+        allow read: if approved() || isAdmin();
+        allow create: if (approved() || isAdmin()) && request.auth.uid == uid
+          && request.resource.data.keys().hasOnly(['data', 'at'])
+          && request.resource.data.data is string && request.resource.data.data.size() <= 200000
+          && request.resource.data.data[0:11] == 'data:image/'
+          && request.resource.data.at == request.time;
+        allow delete: if isStaff() || (signedIn() && request.auth.uid == uid);
+      }
+    }
+
     // Хрестики-нулики: двоє гравців, ходять по черзі.
     match /games/{id} {
       allow read: if signedIn() && request.auth.uid in resource.data.players;

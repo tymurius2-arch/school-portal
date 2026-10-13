@@ -402,7 +402,7 @@ function start() {
     startPresence();
     setupDirectory(); setupChat(); setupGroups(); setupNews(); setupSchedule(); setupHints(); setupTools(); setupLibrary();
     setupProfiles(); setupUnread(); setupMyMute(); setupQuiz(); setupLog(); setupUpdates(); setupChatExtras(); if (!viewAs) recordVisit();
-    setupDMs(); setupStories(); setupNotes(); setupGames(); setupBoard(); setupSpolls(); setupPopup();
+    setupDMs(); setupStories(); setupHouse(); setupNotes(); setupGames(); setupBoard(); setupSpolls(); setupPopup();
     $("#viewas-banner").hidden = !viewAs; $("#viewas-who").textContent = viewAs ? `учень ${viewAs} класу` : "";
     if (isAdmin || isMod) { setupReports(); setupRoster(); setupQbank(); }
     if (isAdmin) { setupAdmin(); setupStats(); setupInvites(); setupRetention(); setupViewAs(); }
@@ -1647,6 +1647,412 @@ function start() {
     finally { btn.textContent = "Опублікувати"; btn.disabled = !snPending; }
   });
 
+  /* ===== Віртуальний дім ===== */
+  const H_W = 1000, H_H = 625, H_WALL = 430;
+  const URL_OK = /^https:\/\/[-A-Za-z0-9._~:/?#@!$&*+,;=%]+$/;
+  const H_WALLS = {
+    lilac: ["Бузок", "repeating-linear-gradient(90deg,#B9A7F5 0 40px,#AC98EE 40px 80px)"],
+    mint: ["М'ята", "radial-gradient(circle at 10px 10px,#ffffff66 3px,transparent 4px) 0 0/28px 28px, #8FD9C1"],
+    pink: ["Рожеві", "radial-gradient(circle,#ff8fc7 3px,transparent 4px) 0 0/24px 24px, #FFD1E6"],
+    sky: ["Небо", "radial-gradient(ellipse at 30% 40%,#fff 0 18px,transparent 19px) 0 0/160px 110px, linear-gradient(#7EC8F5,#CDEBFF)"],
+    night: ["Зорі", "radial-gradient(circle at 20% 30%,#fff 1px,transparent 2px) 0 0/60px 60px, radial-gradient(circle at 70% 60%,#fffb 1.5px,transparent 2.5px) 0 0/90px 90px, linear-gradient(#141A4A,#2B2270)"],
+    bricks: ["Цегла", "linear-gradient(#7a3424 2px,transparent 2px) 0 0/60px 30px, linear-gradient(90deg,#7a3424 2px,transparent 2px) 0 0/60px 60px, linear-gradient(90deg,#7a3424 2px,transparent 2px) 30px 30px/60px 60px, #B5523B"],
+    wood: ["Дерево", "repeating-linear-gradient(90deg,#9C6B3F 0 60px,#8A5C33 60px 63px)"],
+    sunny: ["Сонячні", "repeating-linear-gradient(45deg,#FFE58A 0 18px,#FFD95E 18px 36px)"],
+    gamer: ["Геймер", "linear-gradient(90deg,#00f0ff33 1px,transparent 1px) 0 0/32px 32px, linear-gradient(#00f0ff33 1px,transparent 1px) 0 0/32px 32px, #0B0F2A"],
+    white: ["Біла", "#F2F0EA"]
+  };
+  const H_FLOORS = {
+    parquet: ["Паркет", "repeating-linear-gradient(90deg,#B07A45 0 50px,#A06B38 50px 53px)"],
+    dark: ["Темний", "repeating-linear-gradient(90deg,#3B2A20 0 70px,#33241B 70px 73px)"],
+    tiles: ["Плитка", "conic-gradient(#d8d8d8 25%,#fff 0 50%,#d8d8d8 0 75%,#fff 0) 0 0/60px 60px"],
+    carpet: ["Килим", "radial-gradient(#ffffff26 1px,transparent 2px) 0 0/8px 8px, #3A5BA0"],
+    grass: ["Трава", "repeating-linear-gradient(80deg,#4CAF50 0 6px,#43A047 6px 12px)"],
+    marble: ["Мармур", "linear-gradient(135deg,#f4f4f4,#cfcfcf)"],
+    neon: ["Неон", "linear-gradient(90deg,#ff2bd655 2px,transparent 2px) 0 0/50px 50px, linear-gradient(#00f0ff55 2px,transparent 2px) 0 0/50px 50px, #120A24"]
+  };
+  const H_CATS = {
+    "Меблі": [["🛋", 180], ["🛏", 200], ["🪑", 110], ["🚪", 240], ["🪟", 160], ["🗄", 170], ["🪞", 140], ["🛁", 180], ["🕰", 80], ["💡", 80], ["🪔", 70], ["🧺", 80], ["🗑", 70]],
+    "Техніка": [["📺", 150], ["🖥", 130], ["💻", 100], ["🎮", 70], ["🕹", 80], ["🎧", 70], ["📻", 90], ["📷", 70], ["🔭", 120]],
+    "Рослини": [["🪴", 120], ["🌵", 110], ["🌻", 110], ["🌳", 230], ["💐", 90], ["🌷", 80], ["🍄", 70]],
+    "Тварини": [["🐈", 100], ["🐕", 110], ["🐠", 80], ["🐹", 70], ["🦜", 80], ["🐢", 80], ["🦄", 130], ["🐉", 150]],
+    "Декор": [["🧸", 90], ["🎸", 150], ["⚽", 70], ["🏀", 70], ["🏆", 90], ["🎈", 110], ["🕯", 60], ["📚", 100], ["🎨", 90], ["🌍", 90], ["⭐", 80], ["🎄", 190], ["🎃", 90], ["🪩", 90], ["🛸", 130], ["🚀", 140], ["👑", 80], ["💎", 70]]
+  };
+  const H_IMG = {
+    painting: { w: 200, h: 150, label: "🖼 Картина" }, poster: { w: 150, h: 210, label: "📜 Постер" },
+    photo: { w: 90, h: 110, label: "🖼 Фоторамка" }, tv: { w: 230, h: 150, label: "📺 Телевізор" },
+    rug: { w: 330, h: 100, label: "🟫 Килим з малюнком" }, sticker: { w: 150, h: 150, label: "✨ Наліпка" }
+  };
+  let hView = null, hData = null, hEdit = false, hSel = null, hUnsub = null, hCat = "Меблі", hSaveT = null, hSaving = false, hDirty = false, hList = [];
+  const hImgCache = new Map();
+  const hMine = () => !!me && hView === me.uid;
+  const hid = () => Math.random().toString(36).slice(2, 9);
+  const clampN = (v, a, b, d) => Number.isFinite(v) ? Math.min(b, Math.max(a, v)) : d;
+  function hSanitize(items) {
+    return (Array.isArray(items) ? items : []).slice(0, 60).map(it => {
+      if (!it || typeof it !== "object") return null;
+      const o = { id: String(it.id || hid()).slice(0, 12), t: it.t, x: clampN(it.x, 0, H_W, 500), y: clampN(it.y, 0, H_H, 300), s: clampN(it.s, .3, 4, 1), f: !!it.f };
+      if (it.t === "e") { o.e = String(it.e || "⭐").slice(0, 8); o.w = clampN(it.w, 30, 300, 100); return o; }
+      if (H_IMG[it.t]) {
+        o.w = H_IMG[it.t].w; o.h = H_IMG[it.t].h;
+        if (it.img && it.img.k === "url" && URL_OK.test(it.img.v || "")) o.img = { k: "url", v: it.img.v };
+        if (it.img && it.img.k === "up" && /^[A-Za-z0-9]{1,40}$/.test(it.img.v || "")) o.img = { k: "up", v: it.img.v };
+        return o;
+      }
+      if (it.t === "txt") { o.tx = clean(String(it.tx || "")).slice(0, 30) || "Мій дім"; return o; }
+      return null;
+    }).filter(Boolean);
+  }
+  function hDefault() {
+    const first = (profile.name || "").split(" ").pop() || "мій";
+    return {
+      name: `Дім ${first}`.slice(0, 40), wall: { k: "p", v: "lilac" }, floor: { k: "p", v: "parquet" },
+      items: [
+        { id: hid(), t: "e", e: "🪟", w: 160, x: 260, y: 190, s: 1, f: false },
+        { id: hid(), t: "painting", w: 200, h: 150, x: 640, y: 180, s: 1, f: false },
+        { id: hid(), t: "e", e: "🛋", w: 180, x: 520, y: 470, s: 1, f: false },
+        { id: hid(), t: "e", e: "🪴", w: 120, x: 860, y: 450, s: 1, f: false },
+        { id: hid(), t: "e", e: "💡", w: 80, x: 140, y: 440, s: 1, f: false }
+      ]
+    };
+  }
+  // ---- Картинки: свої (у базі) або за посиланням ----
+  function hImgSrc(owner, img) {
+    if (!img) return Promise.resolve(null);
+    if (img.k === "url") return Promise.resolve(URL_OK.test(img.v) ? img.v : null);
+    const key = `${owner}/${img.v}`;
+    if (!hImgCache.has(key)) {
+      const p = getDoc(doc(db, "houses", owner, "imgs", img.v)).then(s => s.exists() ? s.data().data : null);
+      p.catch(() => hImgCache.delete(key));
+      hImgCache.set(key, p);
+    }
+    return hImgCache.get(key);
+  }
+  async function hSurfaceCss(owner, sf, presets) {
+    if (!sf || sf.k === "p") return (presets[sf && sf.v] || Object.values(presets)[0])[1];
+    const src = await hImgSrc(owner, sf).catch(() => null);
+    if (!src || /["\\\n]/.test(src)) return Object.values(presets)[0][1];
+    return sf.rep ? `url("${src}") 0 0 / 22% auto repeat` : `url("${src}") center / cover no-repeat`;
+  }
+  async function compressImg(file, max, limit = 180000) {
+    const url = URL.createObjectURL(file);
+    try {
+      const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+      for (const [m, q] of [[max, .78], [max * .8, .7], [max * .6, .62], [max * .45, .55]]) {
+        const k = Math.min(1, m / Math.max(img.naturalWidth, img.naturalHeight));
+        const c = document.createElement("canvas"); c.width = Math.max(1, Math.round(img.naturalWidth * k)); c.height = Math.max(1, Math.round(img.naturalHeight * k));
+        const g = c.getContext("2d");
+        const png = file.type === "image/png";
+        if (!png) { g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); }
+        g.drawImage(img, 0, 0, c.width, c.height);
+        const data = png ? c.toDataURL("image/webp", q) : c.toDataURL("image/jpeg", q);
+        if (data.startsWith("data:image/") && data.length <= limit) return data;
+      }
+      throw new Error("big");
+    } finally { URL.revokeObjectURL(url); }
+  }
+  // Вікно вибору картинки: повертає { k: "up"|"url", v }.
+  let ipResolve = null, ipMax = 480;
+  function pickImage(max = 480) {
+    ipMax = max;
+    $("#ip-err").textContent = ""; $("#ip-url").value = "";
+    renderMyImgs();
+    $("#img-pick").showModal();
+    return new Promise(res => { ipResolve = res; });
+  }
+  function ipDone(v) { const r = ipResolve; ipResolve = null; if ($("#img-pick").open) $("#img-pick").close(); r && r(v); }
+  $("#ip-cancel").addEventListener("click", () => ipDone(null));
+  $("#img-pick").addEventListener("cancel", e => { e.preventDefault(); ipDone(null); });
+  $("#ip-file-btn").addEventListener("click", () => $("#ip-file").click());
+  $("#ip-file").addEventListener("change", async e => {
+    const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+    $("#ip-err").textContent = "Завантажую…";
+    try {
+      const data = await compressImg(f, ipMax);
+      const ref = await addDoc(collection(db, "houses", me.uid, "imgs"), { data, at: serverTimestamp() });
+      hImgCache.set(`${me.uid}/${ref.id}`, Promise.resolve(data));
+      ipDone({ k: "up", v: ref.id });
+    } catch (ex) { console.error(ex); $("#ip-err").textContent = ex.message === "big" ? "Картинка завелика." : "Не вдалося завантажити картинку."; }
+  });
+  $("#ip-url-btn").addEventListener("click", () => {
+    const u = $("#ip-url").value.trim();
+    if (!URL_OK.test(u) || u.length > 500) { $("#ip-err").textContent = "Потрібне посилання, що починається з https:// (без пробілів і лапок)."; return; }
+    $("#ip-err").textContent = "Перевіряю картинку…";
+    const t = new Image(); t.referrerPolicy = "no-referrer";
+    const timer = setTimeout(() => { t.src = ""; $("#ip-err").textContent = "Картинка не відкривається. Спробуй інше посилання або завантаж файл."; }, 10000);
+    t.onload = () => { clearTimeout(timer); ipDone({ k: "url", v: u }); };
+    t.onerror = () => { clearTimeout(timer); $("#ip-err").textContent = "За цим посиланням немає картинки. Скопіюй саме «адресу зображення» або завантаж файл."; };
+    t.src = u;
+  });
+  async function renderMyImgs() {
+    const box = $("#ip-mine"); box.replaceChildren();
+    try {
+      const s = await getDocs(query(collection(db, "houses", me.uid, "imgs"), orderBy("at", "desc"), limit(30)));
+      $("#ip-mine-t").hidden = !s.size;
+      s.docs.forEach(d => {
+        const data = d.data().data, wrap = el("div", "im"), img = el("img"); img.src = data; img.alt = "Моя картинка";
+        hImgCache.set(`${me.uid}/${d.id}`, Promise.resolve(data));
+        img.addEventListener("click", () => ipDone({ k: "up", v: d.id }));
+        wrap.append(img, confirmButton("✕", "del", async () => { await deleteDoc(d.ref); wrap.remove(); }));
+        box.append(wrap);
+      });
+    } catch (e) { console.error(e); }
+  }
+  // ---- Відкрити дім ----
+  function setupHouse() {
+    const room = $("#house");
+    if (!setupHouse.ro) { setupHouse.ro = new ResizeObserver(() => room.style.setProperty("--u", room.clientWidth / H_W + "px")); setupHouse.ro.observe(room); }
+    if (!setupHouse.cleanup) {
+      setupHouse.cleanup = true;
+      portalSubs.push(() => { hUnsub && hUnsub(); hUnsub = null; hView = null; hData = null; hEdit = false; hSel = null; setupHouse.cleanup = false; });
+    }
+    if (!hView) openHouse(me.uid);
+  }
+  function openHouse(uid) {
+    hFlush();
+    hUnsub && hUnsub(); hView = uid; hData = null; hSel = null; hEdit = false;
+    $("#h-list").hidden = true; $("#h-room-wrap").hidden = false;
+    $$("#h-nav .chip").forEach(c => c.setAttribute("aria-pressed", String(c.dataset.v === (hMine() ? "mine" : "all"))));
+    renderHouse();
+    let first = true;
+    hUnsub = onSnapshot(doc(db, "houses", uid), async s => {
+      if (!s.exists()) {
+        if (uid === me.uid && !viewAs) {
+          const d = hDefault();
+          try { await setDoc(doc(db, "houses", uid), { ...d, likes: {}, at: serverTimestamp() }); } catch (e) { console.error(e); hData = { ...d, likes: {} }; renderHouse(); }
+          return;
+        }
+        hData = null; renderHouse(); return;
+      }
+      const v = s.data();
+      // Свій дім редагуємо локально: зі знімка беремо лише лайки, щоб не збити перетягування.
+      if (hMine() && hData && !first) { hData.likes = v.likes || {}; renderHouseBar(); return; }
+      first = false;
+      hData = { name: String(v.name || "Дім").slice(0, 40), wall: v.wall, floor: v.floor, items: hSanitize(v.items), likes: v.likes || {} };
+      renderHouse();
+    }, e => { console.error(e); hData = null; renderHouse(); });
+  }
+  function renderHouseBar() {
+    const mine = hMine(), likes = hData ? Object.keys(hData.likes || {}).length : 0, liked = !!(hData && (hData.likes || {})[me.uid]);
+    $("#h-title").textContent = hData ? `🏠 ${clean(hData.name)}` : mine ? "🏠 Мій дім" : "🏠 Дім";
+    $("#h-back").hidden = mine;
+    $("#h-edit-btn").hidden = !mine || !hData || !!viewAs;
+    $("#h-edit-btn").textContent = hEdit ? "✓ Готово" : "✏️ Прикрашати";
+    $("#h-like").hidden = mine || !hData;
+    $("#h-like").textContent = liked ? "❤️ Подобається" : "🤍 Подобається";
+    $("#h-likes").textContent = hData ? `❤️ ${likes}` : "";
+    $("#h-report").hidden = mine || !hData;
+    $("#h-reset").hidden = mine || !hData || !(isAdmin || isMod);
+    $("#h-status").hidden = !mine;
+  }
+  async function renderHouse() {
+    renderHouseBar();
+    const room = $("#house"), owner = hView;
+    room.classList.toggle("editing", hEdit);
+    $("#h-empty").hidden = !!hData;
+    $("#h-edit").hidden = !hEdit; $("#h-tools").hidden = !(hEdit && hSel);
+    if (!hData) { $("#h-items").replaceChildren(); $("#h-wall").style.background = H_WALLS.white[1]; $("#h-floor").style.background = H_FLOORS.parquet[1]; return; }
+    renderHouseItems();
+    if (hEdit) renderHouseEditor();
+    const [w, f] = await Promise.all([hSurfaceCss(owner, hData.wall, H_WALLS), hSurfaceCss(owner, hData.floor, H_FLOORS)]);
+    if (owner !== hView) return;
+    $("#h-wall").style.background = w; $("#h-floor").style.background = f;
+  }
+  function renderHouseItems() {
+    const box = $("#h-items"), owner = hView;
+    box.replaceChildren(...hData.items.map(it => {
+      const d = el("div", "hi" + (it.f ? " flip" : "") + (it.id === hSel ? " sel" : "")); d.dataset.id = it.id;
+      d.style.left = `calc(${it.x} * var(--u))`; d.style.top = `calc(${it.y} * var(--u))`;
+      if (it.t === "e") { d.classList.add("hi-e"); d.textContent = it.e; d.style.fontSize = `calc(${it.w * it.s} * var(--u))`; }
+      else if (it.t === "txt") { d.classList.add("hi-sign"); d.textContent = clean(it.tx); d.style.fontSize = `calc(${28 * it.s} * var(--u))`; d.style.height = `calc(${70 * it.s} * var(--u))`; d.style.minWidth = `calc(${160 * it.s} * var(--u))`; }
+      else {
+        d.classList.add("hi-img", "hi-" + it.t);
+        d.style.width = `calc(${it.w * it.s} * var(--u))`; d.style.height = `calc(${it.h * it.s} * var(--u))`;
+        if (it.img) {
+          const img = el("img"); img.alt = ""; img.referrerPolicy = "no-referrer"; img.loading = "lazy"; img.draggable = false;
+          img.onerror = () => d.replaceChildren(el("span", "ph", "🖼"));
+          hImgSrc(owner, it.img).then(src => { if (src) img.src = src; else d.replaceChildren(el("span", "ph", "🖼")); }, () => d.replaceChildren(el("span", "ph", "🖼")));
+          d.append(img);
+        } else d.append(el("span", "ph", hMine() && hEdit ? "🖼 +" : "🖼"));
+      }
+      return d;
+    }));
+  }
+  function renderHouseEditor() {
+    $("#h-name").value = hData.name;
+    const sw = (box, presets, cur, set, max) => {
+      box.replaceChildren(...Object.entries(presets).map(([k, [name, css]]) => {
+        const b = el("button", null, ""); b.type = "button"; b.title = name; b.setAttribute("aria-label", name);
+        b.style.background = css; b.setAttribute("aria-pressed", String(cur.k === "p" && cur.v === k));
+        b.addEventListener("click", () => { set({ k: "p", v: k }); });
+        return b;
+      }));
+      const own = el("button", "own", cur.k !== "p" ? "🖼 Своя ✓" : "🖼 Своя картинка"); own.type = "button"; own.setAttribute("aria-pressed", String(cur.k !== "p"));
+      own.addEventListener("click", async () => { const v = await pickImage(max); if (v) set({ ...v, rep: false }); });
+      box.append(own);
+      if (cur.k !== "p") {
+        const rep = el("button", "own", cur.rep ? "▦ Плиткою ✓" : "▦ Плиткою"); rep.type = "button"; rep.setAttribute("aria-pressed", String(!!cur.rep));
+        rep.addEventListener("click", () => set({ ...cur, rep: !cur.rep }));
+        box.append(rep);
+      }
+    };
+    sw($("#h-walls"), H_WALLS, hData.wall, v => { hData.wall = v; hChanged(true); }, 720);
+    sw($("#h-floors"), H_FLOORS, hData.floor, v => { hData.floor = v; hChanged(true); }, 640);
+    $("#h-cats").replaceChildren(...[...Object.keys(H_CATS), "Картинки"].map(c => { const b = el("button", "chip", c === "Картинки" ? "🖼 Картинки й написи" : c); b.type = "button"; b.setAttribute("aria-pressed", String(c === hCat)); b.addEventListener("click", () => { hCat = c; renderHouseEditor(); }); return b; }));
+    const cat = $("#h-catalog");
+    if (hCat === "Картинки") {
+      cat.replaceChildren(...Object.entries(H_IMG).map(([t, v]) => { const b = el("button", "wide", v.label); b.type = "button"; b.addEventListener("click", () => hAddImg(t)); return b; }),
+        (() => { const b = el("button", "wide", "🪧 Табличка з написом"); b.type = "button"; b.addEventListener("click", hAddSign); return b; })());
+    } else cat.replaceChildren(...H_CATS[hCat].map(([e, w]) => { const b = el("button", null, e); b.type = "button"; b.setAttribute("aria-label", "Додати " + e); b.addEventListener("click", () => hAdd({ id: hid(), t: "e", e, w, x: 500, y: w > 150 ? 420 : 330, s: 1, f: false })); return b; }));
+  }
+  function hAdd(it) {
+    if (hData.items.length >= 60) { toast("У домі вже 60 предметів — прибери щось"); return; }
+    hData.items.push(it); hSel = it.id; hChanged(true);
+  }
+  async function hAddImg(t) {
+    const v = await pickImage(t === "rug" || t === "tv" ? 560 : 480);
+    if (!v) return;
+    hAdd({ id: hid(), t, w: H_IMG[t].w, h: H_IMG[t].h, x: 500, y: t === "rug" ? 540 : 200, s: 1, f: false, img: v });
+  }
+  function hAddSign() {
+    const tx = clean((prompt("Напис на табличці (до 30 символів):", "Ласкаво просимо!") || "").trim()).slice(0, 30);
+    if (tx) hAdd({ id: hid(), t: "txt", tx, x: 500, y: 90, s: 1, f: false });
+  }
+  function hChanged(full) {
+    hDirty = true;
+    if (full) renderHouse(); else renderHouseItems();
+    hTools();
+    $("#h-status").textContent = "Зберігаю…";
+    clearTimeout(hSaveT); hSaveT = setTimeout(hSave, 900);
+  }
+  function hTools() {
+    $("#h-tools").hidden = !(hEdit && hSel);
+    const sel = hData && hData.items.find(i => i.id === hSel);
+    $$("#h-tools [data-a=image]").forEach(b => b.hidden = !(sel && H_IMG[sel.t]));
+    $$("#h-tools [data-a=text]").forEach(b => b.hidden = !(sel && sel.t === "txt"));
+  }
+  async function hSave() {
+    clearTimeout(hSaveT);
+    if (!hDirty || !hData || !me || hView !== me.uid || viewAs) return;
+    if (hSaving) { hSaveT = setTimeout(hSave, 500); return; }
+    hSaving = true; hDirty = false;
+    try {
+      await updateDoc(doc(db, "houses", me.uid), { name: (clean(hData.name).trim() || "Мій дім").slice(0, 40), wall: hData.wall, floor: hData.floor, items: hSanitize(hData.items), at: serverTimestamp() });
+      $("#h-status").textContent = "Збережено ✓";
+    } catch (e) { console.error(e); hDirty = true; $("#h-status").textContent = "Не вдалося зберегти"; }
+    hSaving = false;
+  }
+  const hFlush = () => { if (hDirty) hSave(); };
+  window.addEventListener("pagehide", hFlush);
+  $("#h-name").addEventListener("input", e => { if (!hData) return; hData.name = e.target.value.slice(0, 40); renderHouseBar(); hChanged(false); });
+  $("#h-edit-btn").addEventListener("click", () => { hEdit = !hEdit; hSel = null; if (!hEdit) hFlush(); renderHouse(); });
+  // ---- Перетягування ----
+  let hDrag = null;
+  $("#h-items").addEventListener("pointerdown", e => {
+    if (!hEdit || !hMine()) return;
+    const node = e.target.closest(".hi");
+    if (!node) { if (hSel) { hSel = null; renderHouseItems(); hTools(); } return; }
+    const it = hData.items.find(i => i.id === node.dataset.id); if (!it) return;
+    e.preventDefault();
+    if (hSel !== it.id) { hSel = it.id; $$("#h-items .hi.sel").forEach(x => x.classList.remove("sel")); node.classList.add("sel"); hTools(); }
+    const u = $("#house").clientWidth / H_W;
+    hDrag = { it, node, sx: e.clientX, sy: e.clientY, ox: it.x, oy: it.y, u, moved: false };
+    node.setPointerCapture(e.pointerId);
+  });
+  $("#h-items").addEventListener("pointermove", e => {
+    if (!hDrag) return;
+    const { it, node, u } = hDrag;
+    it.x = clampN(hDrag.ox + (e.clientX - hDrag.sx) / u, 0, H_W, it.x);
+    it.y = clampN(hDrag.oy + (e.clientY - hDrag.sy) / u, 0, H_H, it.y);
+    node.style.left = `calc(${it.x} * var(--u))`; node.style.top = `calc(${it.y} * var(--u))`;
+    hDrag.moved = true;
+  });
+  let hJustDragged = false;
+  const hDrop = () => { if (!hDrag) return; const m = hDrag.moved; hDrag = null; if (m) { hJustDragged = true; setTimeout(() => { hJustDragged = false; }, 0); hChanged(false); } };
+  $("#h-items").addEventListener("pointerup", hDrop);
+  $("#h-items").addEventListener("pointercancel", hDrop);
+  $("#h-items").addEventListener("click", async e => {
+    // У режимі прикрашання клік по порожній картині відкриває вибір картинки.
+    if (!hEdit || !hMine() || hJustDragged) return;
+    const node = e.target.closest(".hi"), it = node && hData.items.find(i => i.id === node.dataset.id);
+    if (it && H_IMG[it.t] && !it.img) { const v = await pickImage(); if (v) { it.img = v; hChanged(false); } }
+  });
+  $("#h-tools").addEventListener("click", async e => {
+    const a = e.target.closest("button") && e.target.closest("button").dataset.a; if (!a || !hData) return;
+    const i = hData.items.findIndex(x => x.id === hSel); if (i < 0) return;
+    const it = hData.items[i];
+    if (a === "bigger") it.s = Math.min(4, Math.round((it.s + .15) * 100) / 100);
+    if (a === "smaller") it.s = Math.max(.3, Math.round((it.s - .15) * 100) / 100);
+    if (a === "flip") it.f = !it.f;
+    if (a === "front") { hData.items.splice(i, 1); hData.items.push(it); }
+    if (a === "back") { hData.items.splice(i, 1); hData.items.unshift(it); }
+    if (a === "delete") { hData.items.splice(i, 1); hSel = null; }
+    if (a === "image") { const v = await pickImage(it.t === "rug" || it.t === "tv" ? 560 : 480); if (!v) return; it.img = v; }
+    if (a === "text") { const tx = clean((prompt("Новий напис (до 30 символів):", it.tx) || "").trim()).slice(0, 30); if (!tx) return; it.tx = tx; }
+    hChanged(false);
+  });
+  document.addEventListener("keydown", e => {
+    if (!hEdit || !hSel || $("#p-house").hidden || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName) || $("#img-pick").open) return;
+    const it = hData && hData.items.find(x => x.id === hSel); if (!it) return;
+    const step = e.shiftKey ? 30 : 8, mv = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
+    if (mv) { e.preventDefault(); it.x = clampN(it.x + mv[0], 0, H_W, it.x); it.y = clampN(it.y + mv[1], 0, H_H, it.y); hChanged(false); }
+    if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); hData.items = hData.items.filter(x => x.id !== hSel); hSel = null; hChanged(false); }
+  });
+  // ---- У гості ----
+  $("#h-nav").addEventListener("click", e => {
+    const v = e.target.closest(".chip") && e.target.closest(".chip").dataset.v; if (!v) return;
+    if (v === "mine") openHouse(me.uid); else showHouseList();
+  });
+  $("#h-back").addEventListener("click", showHouseList);
+  async function showHouseList() {
+    hFlush(); hUnsub && hUnsub(); hUnsub = null; hView = "__list"; hEdit = false; hSel = null;
+    $$("#h-nav .chip").forEach(c => c.setAttribute("aria-pressed", String(c.dataset.v === "all")));
+    $("#h-title").textContent = "🏘 У гості";
+    $("#h-room-wrap").hidden = true;
+    const box = $("#h-list"); box.hidden = false; box.replaceChildren(emptyEl("Завантаження…"));
+    try {
+      const s = await getDocs(query(collection(db, "houses"), limit(300)));
+      hList = s.docs.filter(d => d.id !== me.uid).map(d => { const v = d.data(); return { uid: d.id, name: String(v.name || "Дім"), likes: Object.keys(v.likes || {}).length, n: (v.items || []).length }; })
+        .sort((a, b) => b.likes - a.likes || b.n - a.n);
+      box.replaceChildren();
+      if (!hList.length) { box.append(emptyEl("Поки що ніхто, крім тебе, не облаштував дім. Поклич друзів!")); return; }
+      hList.forEach((h, i) => {
+        const card = el("div", "card house-card"), info = el("div");
+        info.append(el("b", null, `${i < 3 && h.likes ? ["🥇", "🥈", "🥉"][i] + " " : ""}${clean(h.name)}`), el("span", "muted small", `${dir[h.uid] ? dir[h.uid].name + " · " : ""}❤️ ${h.likes} · предметів: ${h.n}`));
+        const go = el("button", "btn sm", "Зайти 🚪"); go.type = "button"; go.addEventListener("click", () => openHouse(h.uid));
+        card.append(info, go); box.append(card);
+      });
+    } catch (e) { console.error(e); box.replaceChildren(emptyEl("Не вдалося завантажити список домів.")); }
+  }
+  $("#h-like").addEventListener("click", () => {
+    if (!hData || hMine() || viewAs) return;
+    const on = !(hData.likes || {})[me.uid];
+    hData.likes = { ...(hData.likes || {}) }; if (on) hData.likes[me.uid] = true; else delete hData.likes[me.uid];
+    renderHouseBar();
+    updateDoc(doc(db, "houses", hView), { [`likes.${me.uid}`]: on ? true : deleteField() }).catch(e => { console.error(e); toast("Не вдалося"); });
+  });
+  $("#h-report").addEventListener("click", async e => {
+    const b = e.currentTarget; if (!hData) return;
+    if (b.dataset.armed !== "1") { b.dataset.armed = "1"; b.textContent = "Точно?"; setTimeout(() => { b.dataset.armed = ""; b.textContent = "Поскаржитися"; }, 3000); return; }
+    b.dataset.armed = ""; b.textContent = "Поскаржитися";
+    try {
+      await addDoc(collection(db, "reports"), { path: `houses/${hView}`, text: `🏠 Дім «${hData.name}»`, author: hView, authorName: dir[hView] ? dir[hView].name : hData.name, by: me.uid, byName: profile.name, status: "open", createdAt: serverTimestamp() });
+      toast("Скаргу надіслано модераторам");
+    } catch (ex) { console.error(ex); toast("Не вдалося надіслати скаргу"); }
+  });
+  async function resetHouse(uid) {
+    const s = await getDocs(collection(db, "houses", uid, "imgs"));
+    for (let i = 0; i < s.docs.length; i += 400) { const b = writeBatch(db); s.docs.slice(i, i + 400).forEach(d => b.delete(d.ref)); await b.commit(); }
+    await deleteDoc(doc(db, "houses", uid));
+  }
+  $("#h-reset").addEventListener("click", async e => {
+    const b = e.currentTarget, uid = hView;
+    if (b.dataset.armed !== "1") { b.dataset.armed = "1"; b.textContent = "Точно скинути?"; setTimeout(() => { b.dataset.armed = ""; b.textContent = "🧹 Скинути дім"; }, 3000); return; }
+    b.dataset.armed = ""; b.textContent = "🧹 Скинути дім";
+    try { await resetHouse(uid); logAction("Скинув дім", uid, dir[uid] ? dir[uid].name : ""); toast("Дім скинуто"); showHouseList(); }
+    catch (ex) { console.error(ex); toast("Не вдалося"); }
+  });
+
   /* ===== Учні: порівняння списку класу з тими, хто на порталі ===== */
   let rosters = {}, roCls = null;
   function setupRoster() {
@@ -1841,8 +2247,10 @@ function start() {
       dm.addEventListener("click", () => openDM(uid));
       const play = el("button", "btn ghost", "🎮 Зіграти"); play.type = "button";
       play.addEventListener("click", () => { openTab("games"); $("#ttt-opp").value = uid; $("#ttt-invite").focus(); });
+      const visit = el("button", "btn ghost", "🏠 У гості"); visit.type = "button";
+      visit.addEventListener("click", () => { openTab("house"); openHouse(uid); });
       acts.append(dm, chat);
-      if (dir[uid]) acts.append(play);
+      if (dir[uid]) acts.append(play, visit);
     }
   }
   // Досягнення: що людина вже зробила на порталі.
@@ -2216,13 +2624,13 @@ function start() {
     if (!n) { box.append(emptyEl("Скарг немає 👍")); return; }
     reports.forEach(d => {
       const r = d.data({ serverTimestamps: "estimate" });
-      const place = r.path.startsWith("classes/") ? `чат ${r.path.split("/")[1]} класу` : r.path.startsWith("stories/") ? "історія" : r.path.startsWith("dms/") ? "особисті" : "окремий чат";
+      const place = r.path.startsWith("classes/") ? `чат ${r.path.split("/")[1]} класу` : r.path.startsWith("stories/") ? "історія" : r.path.startsWith("houses/") ? "дім" : r.path.startsWith("dms/") ? "особисті" : "окремий чат";
       const card = el("article", "post");
       const top = el("div", "top-line"); top.append(el("h3", null, `Скарга на: ${r.authorName}`), pill(place, "warn"));
       const acts = el("div", "acts");
       const done = async (action) => { await updateDoc(d.ref, { status: "done" }); logAction(action, r.author, r.authorName); };
-      if (isAdmin || /^(classes|stories|dms)\//.test(r.path)) acts.append(confirmButton(r.path.startsWith("stories/") ? "Видалити історію" : "Видалити повідомлення", "btn badb sm", async () => {
-        await (r.path.startsWith("stories/") ? deleteStory(doc(db, r.path)) : deleteDoc(doc(db, r.path))).catch(e => console.error(e));
+      if (isAdmin || /^(classes|stories|dms|houses)\//.test(r.path)) acts.append(confirmButton(r.path.startsWith("stories/") ? "Видалити історію" : r.path.startsWith("houses/") ? "Скинути дім" : "Видалити повідомлення", "btn badb sm", async () => {
+        await (r.path.startsWith("stories/") ? deleteStory(doc(db, r.path)) : r.path.startsWith("houses/") ? resetHouse(r.path.split("/")[1]) : deleteDoc(doc(db, r.path))).catch(e => console.error(e));
         await done("Видалив повідомлення за скаргою"); toast("Повідомлення видалено");
       }));
       const keep = el("button", "btn ghost sm", "Залишити"); keep.type = "button";
