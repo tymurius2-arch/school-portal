@@ -144,6 +144,7 @@
       <button class="tab" role="tab" data-tab="hints">Підказки</button>
       <button class="tab" role="tab" data-tab="library">📚 Бібліотека</button>
       <button class="tab" role="tab" data-tab="tools">☰ Корисне</button>
+      <button class="tab" role="tab" data-tab="house">🏠 Дім</button>
       <button class="tab" role="tab" data-tab="games">🎮 Ігри <span class="badge" id="games-count" hidden></span></button>
       <button class="tab" role="tab" data-tab="updates">🆕 Оновлення <span class="badge new" id="upd-new" hidden>NEW</span></button>
       <button class="tab" role="tab" data-tab="profile">👤 Профіль</button>
@@ -419,6 +420,56 @@
           </ul>
         </article>
       </div>
+    </section>
+
+    <!-- Віртуальний дім -->
+    <section class="panel" id="p-house" role="tabpanel" hidden>
+      <div class="head">
+        <h2 id="h-title">🏠 Мій дім</h2>
+        <div class="chips" id="h-nav">
+          <button class="chip" type="button" data-v="mine" aria-pressed="true">🏠 Мій дім</button>
+          <button class="chip" type="button" data-v="all" aria-pressed="false">🏘 У гості</button>
+        </div>
+      </div>
+      <div id="h-room-wrap">
+        <div class="row h-bar" id="h-bar">
+          <button class="btn ghost sm" type="button" id="h-back" hidden>← До списку</button>
+          <button class="btn sm" type="button" id="h-edit-btn">✏️ Прикрашати</button>
+          <button class="btn ghost sm" type="button" id="h-like" hidden>🤍 Подобається</button>
+          <span class="muted small" id="h-likes"></span>
+          <span class="muted small h-status" id="h-status"></span>
+          <button class="btn ghost sm" type="button" id="h-report" hidden>Поскаржитися</button>
+          <button class="btn ghost sm" type="button" id="h-reset" hidden>🧹 Скинути дім</button>
+        </div>
+        <div class="house" id="house">
+          <div class="house-wall" id="h-wall"></div>
+          <div class="house-floor" id="h-floor"></div>
+          <div class="house-items" id="h-items"></div>
+          <p class="house-empty" id="h-empty" hidden>Тут ще ніхто не живе 🏚</p>
+        </div>
+        <div class="h-tools" id="h-tools" hidden>
+          <button class="icon-btn" type="button" data-a="smaller" title="Менше" aria-label="Менше">➖</button>
+          <button class="icon-btn" type="button" data-a="bigger" title="Більше" aria-label="Більше">➕</button>
+          <button class="icon-btn" type="button" data-a="flip" title="Віддзеркалити" aria-label="Віддзеркалити">↔</button>
+          <button class="icon-btn" type="button" data-a="front" title="На передній план" aria-label="На передній план">⬆</button>
+          <button class="icon-btn" type="button" data-a="back" title="На задній план" aria-label="На задній план">⬇</button>
+          <button class="icon-btn" type="button" data-a="image" title="Змінити картинку" aria-label="Змінити картинку">🖼</button>
+          <button class="icon-btn" type="button" data-a="text" title="Змінити напис" aria-label="Змінити напис">✏️</button>
+          <button class="icon-btn" type="button" data-a="delete" title="Прибрати" aria-label="Прибрати">🗑</button>
+        </div>
+        <div class="card stack h-edit" id="h-edit" hidden>
+          <label for="h-name">Назва дому<input id="h-name" maxlength="40"></label>
+          <span class="eyebrow">Обої</span>
+          <div class="h-swatches" id="h-walls"></div>
+          <span class="eyebrow">Підлога</span>
+          <div class="h-swatches" id="h-floors"></div>
+          <span class="eyebrow">Додати предмет</span>
+          <div class="chips" id="h-cats"></div>
+          <div class="h-catalog" id="h-catalog"></div>
+          <p class="muted small">Тягни предмети пальцем або мишкою. Натисни на предмет — з'являться кнопки: більше, менше, перевернути, прибрати.</p>
+        </div>
+      </div>
+      <div class="list" id="h-list" hidden></div>
     </section>
 
     <!-- Ігри -->
@@ -716,6 +767,22 @@
       <button class="btn" type="button" id="sn-post" disabled>Опублікувати</button>
       <button class="btn ghost" type="button" id="sn-cancel">Скасувати</button>
     </div>
+  </div>
+</dialog>
+<dialog class="story-new" id="img-pick" aria-labelledby="ip-title">
+  <div class="stack">
+    <h3 id="ip-title">🖼 Обери картинку</h3>
+    <button class="btn" type="button" id="ip-file-btn">📁 Завантажити з телефона чи комп'ютера</button>
+    <input type="file" id="ip-file" accept="image/*" hidden>
+    <label for="ip-url">Або встав посилання на картинку з інтернету
+      <input id="ip-url" type="url" placeholder="https://…/картинка.jpg" autocomplete="off">
+    </label>
+    <button class="btn ghost" type="button" id="ip-url-btn">Додати за посиланням</button>
+    <p class="muted small">Як узяти посилання: у Google Картинках відкрий картинку → натисни й тримай (або правою кнопкою) → «Копіювати адресу зображення».</p>
+    <span class="eyebrow" id="ip-mine-t" hidden>Мої картинки</span>
+    <div class="ip-mine" id="ip-mine"></div>
+    <p class="err" role="alert" id="ip-err"></p>
+    <button class="btn ghost" type="button" id="ip-cancel">Скасувати</button>
   </div>
 </dialog>
 <div class="season-fx" id="season-fx" aria-hidden="true"></div>
