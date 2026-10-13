@@ -574,3 +574,6 @@ input.bad{border-color:var(--bad); background:color-mix(in srgb,var(--bad) 20%,v
 .wheel .wl{position:absolute; left:50%; top:50%; width:30%; text-align:center; font-size:.72rem; font-weight:800; color:#1A1033; transform-origin:50% 50%; line-height:1.1}
 .wheel-pin{position:absolute; top:-14px; left:50%; transform:translateX(-50%); z-index:2; font-size:1.8rem; color:var(--accent); text-shadow:0 2px 4px rgba(0,0,0,.5)}
 .wheel-res{font-weight:800; min-height:1.4em; margin:0}
+.pet-ava.egg{cursor:pointer}
+.pet-ava.tap{animation:eggTap .25s ease}
+@keyframes eggTap{0%{transform:scale(1) rotate(0)} 40%{transform:scale(1.12) rotate(-10deg)} 100%{transform:scale(1) rotate(0)}}
