@@ -2590,11 +2590,34 @@ function start() {
       store.set("companionX", cp.x);
       return;
     }
-    // Простий тап: підстрибує й каже, що хоче.
-    cp.vy = -650; cp.ground = false;
-    const p = compPetNow(); compSay(p ? (compNeed(p) || "❤️") : "❤️", 1400);
-    if (p && soundOn) ppSound(600, 1000, .12, "triangle");
+    compStroke();
   };
+  // Тап — гладимо: сердечка, задоволена мордочка, муркотіння, і вихованцю стає радісніше.
+  let strokeSaveT = null, strokes = 0;
+  function compStroke() {
+    const p = compPetNow(); if (!p) return;
+    compBody.classList.remove("pat"); void compBody.offsetWidth; compBody.classList.add("pat");
+    if (petStage(p)[1] === 0) { compSay("🥚 тук-тук", 900); return; }
+    const r = comp.getBoundingClientRect();
+    for (let i = 0; i < 3; i++) {
+      const h = el("span", "comp-heart", ["❤️", "💕", "💖"][i]);
+      h.style.left = (r.left + r.width * (.2 + Math.random() * .6)) + "px"; h.style.top = (r.top + r.height * .2) + "px";
+      h.style.animationDelay = i * 90 + "ms"; document.body.append(h); setTimeout(() => h.remove(), 1400);
+    }
+    strokes++;
+    compSay(strokes % 5 === 0 ? `${p.name} тебе любить 💞` : ["🥰", "😊", "☺️", "💕"][Math.floor(Math.random() * 4)], 1200);
+    if (soundOn) { ppSound(160, 120, .18, "sine"); setTimeout(() => ppSound(150, 110, .18, "sine"), 160); }
+    cp.vx = 0; cp.walkUntil = 0; cp.nextWalk = performance.now() + 4000;   // постоїть, поки гладять
+    if (viewAs) return;
+    // Радість трохи росте; зберігаємо не частіше, ніж раз на 1,5 с.
+    const target = hData && hMine() && hData.pet ? hData.pet : myPet;
+    setVal(target, "played", petVal(target, "played") + 4);
+    clearTimeout(strokeSaveT);
+    strokeSaveT = setTimeout(() => {
+      if (hData && hMine() && hData.pet) { hChanged(false); renderPet(); }
+      else updateDoc(doc(db, "houses", me.uid), { pet: myPet, at: serverTimestamp() }).catch(console.error);
+    }, 1500);
+  }
   comp.addEventListener("pointerup", compUp);
   comp.addEventListener("pointercancel", compUp);
   async function compOpenCare() {
