@@ -2463,50 +2463,82 @@ function start() {
   $("#pp-x").addEventListener("click", ppClose);
   $("#pet-play").addEventListener("cancel", e => { e.preventDefault(); ppClose(); });
   setInterval(() => { if ($("#pet-play").open) ppRender(); }, 15000);
-  /* ---- Вихованець-компаньйон: гуляє по екрану на всіх вкладках ---- */
-  let myPet = null, compT = null, compPause = 0, compDrag = null, compLong = null;
-  const comp = $("#companion");
+  /* ---- Вихованець-компаньйон: живе на екрані з фізикою ---- */
+  // Гравітація тягне вниз, від стінок і підлоги відскакує, його можна підкинути й кинути.
+  let myPet = null, compDrag = null, compLong = null, compRaf = null, compLast = 0;
+  const comp = $("#companion"), compBody = $("#comp-body");
+  const cp = { x: 0, y: 0, vx: 0, vy: 0, ground: false, walkUntil: 0, walkV: 0, nextWalk: 0, placed: false, target: null };
+  const G = 2600, BOUNCE = .42, WALL = .55;
   const compOn = () => store.get("companion", true);
   $("#companion-on").checked = compOn();
   $("#companion-on").addEventListener("change", e => { store.set("companion", e.target.checked); renderCompanion(); });
   function setupCompanion() {
     portalSubs.push(onSnapshot(doc(db, "houses", me.uid), s => { myPet = s.exists() ? hPet(s.data().pet) : null; renderCompanion(); }, () => {}));
     portalSubs.push(() => { myPet = null; renderCompanion(); });
-    clearInterval(compT); compT = setInterval(compWander, 4500);
-    portalSubs.push(() => clearInterval(compT));
   }
-  // Свіжі зміни з догляду показуємо одразу, ще до збереження.
   const compPetNow = () => (hData && hMine() && hData.pet) || myPet;
+  const compSize = () => [comp.offsetWidth || 60, comp.offsetHeight || 60];
+  const floorY = () => innerHeight - compSize()[1] - 2;
   function renderCompanion() {
     const p = compPetNow();
     const show = inPortal && compOn() && !!p && !viewAs && !$("#pet-play").open;
-    comp.hidden = !show; if (!show) return;
+    comp.hidden = !show;
+    if (!show) { cancelAnimationFrame(compRaf); compRaf = null; return; }
     const egg = petStage(p)[1] === 0, big = { "🐹": 1.6 }[p.e] || 1;
     $("#comp-face").textContent = egg ? "🥚" : p.e;
     $("#comp-hat").textContent = egg ? "" : (p.hat || "");
     comp.style.fontSize = `${(egg ? 2.6 : [0, 2.8, 3.2, 3.6, 4][petStage(p)[1]]) * (egg ? 1 : big)}rem`;
     comp.classList.toggle("legend", p.r === "l" && !egg);
-    if (!comp.dataset.placed) {
-      const pos = store.get("companionPos", null);
-      compMove(pos ? pos[0] : innerWidth * .75, pos ? pos[1] : innerHeight - 90, false);
-      comp.dataset.placed = "1";
+    if (!cp.placed) {
+      cp.placed = true;
+      cp.x = store.get("companionX", innerWidth * .7); cp.y = 70; cp.vx = 0; cp.vy = 0;   // з'являється згори й падає
     }
+    if (!compRaf) { compLast = performance.now(); compRaf = requestAnimationFrame(compStep); }
   }
-  function compMove(x, y, walk = true) {
-    const w = comp.offsetWidth || 60, h = comp.offsetHeight || 60;
-    x = Math.max(4, Math.min(innerWidth - w - 4, x)); y = Math.max(60, Math.min(innerHeight - h - 4, y));
-    const ox = parseFloat(comp.style.left) || x;
-    comp.classList.toggle("walk", walk);
-    comp.classList.toggle("left", x < ox);
-    comp.style.left = x + "px"; comp.style.top = y + "px";
+  function compStep(now) {
+    compRaf = requestAnimationFrame(compStep);
+    const dt = Math.min(.033, (now - compLast) / 1000); compLast = now;
+    if (document.hidden) return;
+    const [w, h] = compSize(), maxX = innerWidth - w - 2, fy = floorY();
+    const p = compPetNow(), egg = !p || petStage(p)[1] === 0;
+    if (!compDrag) {
+      cp.vy += G * dt;
+      // На підлозі: тертя й прогулянки.
+      if (cp.ground) {
+        if (now < cp.walkUntil && !egg) cp.vx += (cp.walkV - cp.vx) * Math.min(1, 8 * dt);
+        else cp.vx *= Math.max(0, 1 - 7 * dt);
+        if (cp.target != null) {
+          const d = cp.target - cp.x;
+          if (Math.abs(d) < 12) { cp.target = null; cp.walkUntil = 0; }
+          else { cp.walkV = Math.sign(d) * 260; cp.walkUntil = now + 200; }
+        } else if (now > cp.nextWalk && !egg && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+          cp.nextWalk = now + 3000 + Math.random() * 5000;
+          if (Math.random() < .7) { cp.walkV = (Math.random() < .5 ? -1 : 1) * (50 + Math.random() * 60); cp.walkUntil = now + 900 + Math.random() * 1800; }
+          else if (Math.random() < .5) { cp.vy = -520; cp.ground = false; }  // радісний стрибок
+          if (Math.random() < .3 && p) compSay(compNeed(p) || ["❤️", "🎵", "✨", "😊"][Math.floor(Math.random() * 4)]);
+        }
+      } else cp.vx *= Math.max(0, 1 - .4 * dt);
+      cp.x += cp.vx * dt; cp.y += cp.vy * dt;
+      if (cp.x < 2) { cp.x = 2; cp.vx = Math.abs(cp.vx) * WALL; if (cp.vx > 200) compBump("x"); }
+      if (cp.x > maxX) { cp.x = maxX; cp.vx = -Math.abs(cp.vx) * WALL; if (cp.vx < -200) compBump("x"); }
+      if (cp.y < 0) { cp.y = 0; cp.vy = Math.abs(cp.vy) * .5; }
+      if (cp.y >= fy) {
+        cp.y = fy;
+        if (cp.vy > 380) { const hard = cp.vy; cp.vy = -cp.vy * BOUNCE; cp.ground = false; compBump("y", hard); }
+        else { cp.vy = 0; cp.ground = true; }
+      } else if (cp.y < fy - 1) cp.ground = false;
+    }
+    comp.style.transform = `translate(${cp.x}px, ${cp.y}px)`;
+    const moving = Math.abs(cp.vx) > 15;
+    if (moving) comp.classList.toggle("left", cp.vx < 0);
+    comp.classList.toggle("walk", cp.ground && moving && !compDrag);
+    comp.classList.toggle("air", !cp.ground && !compDrag);
   }
-  function compWander() {
-    if (comp.hidden || compDrag || Date.now() < compPause || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const p = compPetNow(); if (!p || petStage(p)[1] === 0) return;
-    const x = parseFloat(comp.style.left) || 0, y = parseFloat(comp.style.top) || 0;
-    compMove(x + (Math.random() - .5) * 220, y + (Math.random() - .5) * 40);
-    setTimeout(() => comp.classList.remove("walk"), 1600);
-    if (Math.random() < .25) compSay(compNeed(p) || ["❤️", "🎵", "✨", "😊"][Math.floor(Math.random() * 4)]);
+  function compBump(axis, force = 0) {
+    compBody.classList.remove("land-x", "land-y"); void compBody.offsetWidth;
+    compBody.classList.add(axis === "y" ? "land-y" : "land-x");
+    if (force > 1600) compSay(["😵", "🤕", "😵‍💫"][Math.floor(Math.random() * 3)], 1000);
+    if (soundOn && force > 600) ppSound(180, 90, .1, "sine");
   }
   function compNeed(p) {
     if (petStage(p)[1] === 0) return "🥚";
@@ -2516,43 +2548,50 @@ function start() {
     const b = $("#comp-say"); b.textContent = t; b.hidden = false;
     clearTimeout(compSay.t); compSay.t = setTimeout(() => { b.hidden = true; }, ms);
   }
-  // Коли перемикаєш вкладку — вихованець біжить слідом.
+  // Коли перемикаєш вкладку — вихованець біжить до неї по підлозі.
   function compFollow(tabBtn) {
-    if (comp.hidden || !tabBtn || Date.now() < compPause) return;
+    if (comp.hidden || !tabBtn || compDrag) return;
     const r = tabBtn.getBoundingClientRect();
-    compMove(r.left + r.width / 2 - comp.offsetWidth / 2, Math.min(innerHeight - comp.offsetHeight - 4, r.bottom + 20));
-    setTimeout(() => comp.classList.remove("walk"), 1600);
+    cp.target = Math.max(2, Math.min(innerWidth - compSize()[0] - 2, r.left + r.width / 2 - compSize()[0] / 2));
+    if (cp.ground) { cp.vy = -380; cp.ground = false; }
     compSay(["🏃", "👀", "😄", "🐾"][Math.floor(Math.random() * 4)], 1200);
   }
+  // Перетягування й кидок: швидкість кидка — з останніх рухів пальця.
   comp.addEventListener("pointerdown", e => {
-    e.preventDefault();
-    comp.setPointerCapture(e.pointerId);
-    const r = comp.getBoundingClientRect();
-    compDrag = { dx: e.clientX - r.left, dy: e.clientY - r.top, sx: e.clientX, sy: e.clientY, moved: false };
-    comp.classList.add("held"); comp.classList.remove("walk");
+    e.preventDefault(); comp.setPointerCapture(e.pointerId);
+    compDrag = { dx: e.clientX - cp.x, dy: e.clientY - cp.y, sx: e.clientX, sy: e.clientY, moved: false, hist: [[e.clientX, e.clientY, performance.now()]] };
+    cp.vx = cp.vy = 0; cp.target = null; cp.ground = false;
+    comp.classList.add("held");
     compLong = setTimeout(() => { if (compDrag && !compDrag.moved) { compDrag = null; comp.classList.remove("held"); compOpenCare(); } }, 650);
   });
   comp.addEventListener("pointermove", e => {
     if (!compDrag) return;
     if (Math.hypot(e.clientX - compDrag.sx, e.clientY - compDrag.sy) > 6) { compDrag.moved = true; clearTimeout(compLong); }
     if (!compDrag.moved) return;
-    comp.style.transition = "none";
-    comp.style.left = (e.clientX - compDrag.dx) + "px"; comp.style.top = (e.clientY - compDrag.dy) + "px";
+    cp.x = e.clientX - compDrag.dx; cp.y = e.clientY - compDrag.dy;
+    const [w, h] = compSize(); cp.x = Math.max(2, Math.min(innerWidth - w - 2, cp.x)); cp.y = Math.max(0, Math.min(innerHeight - h - 2, cp.y));
+    compDrag.hist.push([e.clientX, e.clientY, performance.now()]); if (compDrag.hist.length > 6) compDrag.hist.shift();
     if (!compDrag.said) { compDrag.said = true; compSay("😲 Ой-ой!", 900); }
   });
   const compUp = () => {
     clearTimeout(compLong);
     if (!compDrag) return;
-    const d = compDrag; compDrag = null; comp.classList.remove("held"); comp.style.transition = "";
+    const d = compDrag; compDrag = null; comp.classList.remove("held");
     if (d.moved) {
-      compMove(parseFloat(comp.style.left), parseFloat(comp.style.top), false);
-      store.set("companionPos", [parseFloat(comp.style.left), parseFloat(comp.style.top)]);
-      compPause = Date.now() + 15000; compSay("😵‍💫", 1000);
-      comp.classList.remove("drop"); void comp.offsetWidth; comp.classList.add("drop");
+      // Швидкість — лише з рухів за останні ~120 мс: якщо палець зупинився, просто падає.
+      const now = performance.now(), recent = d.hist.filter(h => now - h[2] < 120);
+      const lim = v => Math.max(-2600, Math.min(2600, v));
+      if (recent.length >= 2) {
+        const a = recent[0], b = recent[recent.length - 1], t = Math.max(.016, (b[2] - a[2]) / 1000);
+        cp.vx = lim((b[0] - a[0]) / t); cp.vy = lim((b[1] - a[1]) / t);
+      } else { cp.vx = 0; cp.vy = 0; }
+      cp.ground = false;
+      if (Math.hypot(cp.vx, cp.vy) > 1400) compSay("Віііі! 🌀", 1100);
+      store.set("companionX", cp.x);
       return;
     }
-    // Простий тап: стрибок і що хоче.
-    comp.classList.remove("hop"); void comp.offsetWidth; comp.classList.add("hop");
+    // Простий тап: підстрибує й каже, що хоче.
+    cp.vy = -650; cp.ground = false;
     const p = compPetNow(); compSay(p ? (compNeed(p) || "❤️") : "❤️", 1400);
     if (p && soundOn) ppSound(600, 1000, .12, "triangle");
   };
@@ -2564,7 +2603,6 @@ function start() {
     for (let i = 0; i < 30 && !(hData && hMine() && hData.pet); i++) await new Promise(r => setTimeout(r, 100));
     if (hData && hData.pet && petStage(hData.pet)[1] > 0) openPetPlay(); else compSay("🥚 Спершу вилупи мене!", 2000);
   }
-  window.addEventListener("resize", () => { if (!comp.hidden) compMove(parseFloat(comp.style.left), parseFloat(comp.style.top), false); });
   $("#pet-play").addEventListener("close", renderCompanion);
   setInterval(() => { if (hData && !$("#p-house").hidden) renderPet(); }, 60000);
 
