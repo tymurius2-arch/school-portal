@@ -161,6 +161,7 @@
     <!-- Чат -->
     <section class="panel" id="p-chat" role="tabpanel">
       <div class="bday" id="bday" hidden></div>
+      <div class="stories" id="stories" aria-label="Історії"></div>
       <div class="chips" id="chat-switch" aria-label="Мої чати"></div>
       <div class="head">
         <h2 id="chat-title">Чат класу</h2>
@@ -672,6 +673,49 @@
     <h2 id="popup-title"></h2>
     <p id="popup-text"></p>
     <button class="btn" type="button" id="popup-ok">Зрозуміло</button>
+  </div>
+</dialog>
+<dialog class="story-view" id="story-view" aria-label="Перегляд історії">
+  <div class="sv-bars" id="sv-bars"></div>
+  <div class="sv-top">
+    <span class="sv-ava" id="sv-ava"></span>
+    <div class="sv-who"><b id="sv-name"></b><small id="sv-time"></small></div>
+    <button class="sv-btn" type="button" id="sv-x" aria-label="Закрити">✕</button>
+  </div>
+  <div class="sv-media" id="sv-media"></div>
+  <button class="sv-nav prev" type="button" id="sv-prev" aria-label="Попередня історія"></button>
+  <button class="sv-nav next" type="button" id="sv-next" aria-label="Наступна історія"></button>
+  <p class="sv-cap" id="sv-cap"></p>
+  <div class="sv-bottom">
+    <button class="sv-btn" type="button" id="sv-like" aria-label="Подобається">🤍</button>
+    <span class="sv-views" id="sv-views"></span>
+    <button class="sv-btn txt" type="button" id="sv-report">Поскаржитися</button>
+    <button class="sv-btn txt" type="button" id="sv-del">Видалити</button>
+  </div>
+</dialog>
+<dialog class="story-new" id="story-new" aria-labelledby="sn-title">
+  <div class="stack">
+    <h3 id="sn-title">✨ Нова історія</h3>
+    <div class="row sn-pick">
+      <button class="btn ghost" type="button" id="sn-photo">📷 Фото</button>
+      <button class="btn ghost" type="button" id="sn-video">🎬 Відео з галереї</button>
+      <button class="btn ghost" type="button" id="sn-cam">🎥 Зняти відео</button>
+    </div>
+    <input type="file" id="sn-file-img" accept="image/*" hidden>
+    <input type="file" id="sn-file-vid" accept="video/*" hidden>
+    <div class="sn-preview" id="sn-preview"><span class="muted small">Обери фото чи відео або зніми нове.</span></div>
+    <div class="row sn-cam-ctl" id="sn-cam-ctl" hidden>
+      <button class="btn" type="button" id="sn-rec">⏺ Почати запис</button>
+      <button class="btn ghost" type="button" id="sn-flip" aria-label="Інша камера">🔄</button>
+      <span class="sn-rec-t" id="sn-rec-t"></span>
+    </div>
+    <label for="sn-cap">Підпис <span class="muted">(необов'язково)</span><input id="sn-cap" maxlength="120" placeholder="Перерва 🔥"></label>
+    <p class="muted small">Відео — до 15 секунд. Історія зникне через 24 години. Її побачать усі учасники порталу.</p>
+    <p class="err" role="alert" id="sn-err"></p>
+    <div class="row">
+      <button class="btn" type="button" id="sn-post" disabled>Опублікувати</button>
+      <button class="btn ghost" type="button" id="sn-cancel">Скасувати</button>
+    </div>
   </div>
 </dialog>
 <div class="season-fx" id="season-fx" aria-hidden="true"></div>
