@@ -2168,7 +2168,7 @@ function start() {
   const petStage = p => p.xp < 3 ? ["яйце", 0] : p.xp < 20 ? ["малюк", 1] : p.xp < 60 ? ["підліток", 2] : p.xp < 150 ? ["дорослий", 3] : ["легенда", 4];
   const petBar = (since, perHour) => Math.max(0, Math.round(100 - (Date.now() - since) / H * perHour));
   const ACTIONS = {
-    warm: { label: "🔥 Гріти яйце", cd: MIN, xp: 1, field: "warm" },
+    warm: { label: "🔥 Гріти яйце", cd: 0, xp: 1, field: "warm" },
     feed: { label: "🍖 Нагодувати", cd: H, xp: 2, field: "fed" },
     play: { label: "🎾 Погратися", cd: 30 * MIN, xp: 1, field: "played" },
     wash: { label: "🛁 Помити", cd: 3 * H, xp: 1, field: "washed" }
