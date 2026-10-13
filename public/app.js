@@ -2312,7 +2312,9 @@ function start() {
     $("#pp-bubble").textContent = need; $("#pp-bubble").hidden = !need || !!pp.emo;
     const mood = pp.emo || (pp.dark ? "😴" : v.fed < 25 ? "😢" : v.washed < 25 ? "😖" : v.slept < 20 ? "🥱" : v.played < 25 ? "😒" : "😊");
     $("#pp-face").textContent = p.e; $("#pp-mood").textContent = mood;
-    $("#pp-pet").style.fontSize = `${[0, 6, 7.5, 9, 10][petStage(p)[1]]}rem`;
+    // Деякі емодзі самі по собі дрібні — збільшуємо їх (хом'ячок).
+    const big = { "🐹": 1.6 }[p.e] || 1;
+    $("#pp-pet").style.fontSize = `min(${[0, 6, 7.5, 9, 10][petStage(p)[1]] * big}rem, 70vw)`;
     $("#pp-pet").classList.toggle("legend", p.r === "l");
     $("#pp-pet").classList.toggle("sleep", pp.dark);
     $("#pp-hat").textContent = p.hat || "";
