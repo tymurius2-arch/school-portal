@@ -578,7 +578,6 @@ input.bad{border-color:var(--bad); background:color-mix(in srgb,var(--bad) 20%,v
 .pet-ava.tap{animation:eggTap .25s ease}
 @keyframes eggTap{0%{transform:scale(1) rotate(0)} 40%{transform:scale(1.12) rotate(-10deg)} 100%{transform:scale(1) rotate(0)}}
 /* Догляд за вихованцем */
-.pet-walk[data-hat]:not([data-hat=""])::before{content:attr(data-hat); position:absolute; left:50%; top:-42%; transform:translateX(-50%); font-size:55%}
 .pet-play{border:0; padding:0; margin:0; width:100vw; height:100dvh; max-width:100vw; max-height:100dvh; color:var(--fg); background:linear-gradient(#FFE7C2 0 62%, #C98A55 62%); overflow:hidden; user-select:none; -webkit-user-select:none}
 .pet-play[open]{display:flex; flex-direction:column}
 .pet-play::backdrop{background:#000}
@@ -651,3 +650,16 @@ input.bad{border-color:var(--bad); background:color-mix(in srgb,var(--bad) 20%,v
 @keyframes compPat{0%{transform:scale(1)} 35%{transform:scale(1.12,.82)} 70%{transform:scale(.96,1.05)} 100%{transform:none}}
 .comp-heart{position:fixed; z-index:41; font-size:1.3rem; pointer-events:none; transform:translate(-50%,-50%); animation:compHeart 1.3s ease-out forwards}
 @keyframes compHeart{0%{opacity:0; transform:translate(-50%,-50%) scale(.5)} 20%{opacity:1; transform:translate(-50%,-80%) scale(1.1)} 100%{opacity:0; transform:translate(-50%,-260%) scale(.9)}}
+
+/* Гардероб вихованця */
+.wear-box{position:absolute; inset:0; pointer-events:none}
+.wear{position:absolute; line-height:1}
+.w-hat{left:50%; top:-36%; transform:translateX(-50%); font-size:50%; z-index:3}
+.w-eyes{left:50%; top:20%; transform:translateX(-50%); font-size:48%; z-index:3}
+.w-neck{left:50%; top:76%; transform:translateX(-50%); font-size:28%; z-index:3}
+.w-body{left:50%; top:80%; transform:translateX(-50%); font-size:58%; z-index:-1}
+.w-hand{right:-26%; top:52%; font-size:38%; z-index:3; transform:rotate(-12deg)}
+.pp-face,.comp-face,.pet-walk-face{position:relative; z-index:1}
+.pp-pet,.comp-body,.pet-walk{isolation:isolate}
+.pp-slots{display:flex; gap:6px; flex-wrap:wrap; justify-content:center; width:100%}
+.pp-slots .chip.has::after{content:" ✓"; color:var(--ok)}
