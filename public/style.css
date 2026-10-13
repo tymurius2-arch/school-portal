@@ -548,3 +548,29 @@ input.bad{border-color:var(--bad); background:color-mix(in srgb,var(--bad) 20%,v
 .uf-body ul{margin:0; padding-left:20px; display:grid; gap:8px}
 .uf-body p{margin:0}
 .uf-acts{justify-content:center}
+/* Кімнати, вихованець, колесо */
+.h-rooms{margin-bottom:8px}
+.h-addroom{flex-wrap:wrap; margin-bottom:8px}
+.pet-walk{position:absolute; bottom:6%; left:10%; line-height:1; animation:petWalk 18s ease-in-out infinite alternate; filter:drop-shadow(0 4px 3px rgba(0,0,0,.3)); pointer-events:none}
+.pet-walk::after{content:attr(data-mood); position:absolute; top:-45%; right:-30%; font-size:40%; background:#fff; color:#222; border-radius:10px; padding:2px 5px}
+.pet-walk.egg{animation:petWobble 1.4s ease-in-out infinite; left:46%}
+.pet-walk.legend{filter:drop-shadow(0 0 10px #FFC93C)}
+@keyframes petWalk{0%{left:8%} 45%{left:60%} 50%{left:60%; transform:scaleX(-1)} 100%{left:80%; transform:scaleX(-1)}}
+@keyframes petWobble{0%,100%{transform:rotate(-8deg)} 50%{transform:rotate(8deg)}}
+@media (prefers-reduced-motion:reduce){.pet-walk{animation:none}}
+.pet-card{margin-top:10px}
+.pet-head{display:flex; align-items:center; gap:12px}
+.pet-head > div:nth-child(2){flex:1; display:grid}
+.pet-ava{width:64px; height:64px; border-radius:16px; display:grid; place-items:center; font-size:2.4rem; background:var(--surface2)}
+.pet-ava.legend{box-shadow:0 0 0 2px #FFC93C, 0 0 18px #FFC93C}
+.pet-bars{display:grid; gap:6px}
+.pet-bar{display:grid; grid-template-columns:110px 1fr 44px; align-items:center; gap:8px; font-size:.85rem}
+.pet-bar i{height:10px; border-radius:6px; background:var(--surface2); overflow:hidden}
+.pet-bar b{display:block; height:100%; background:var(--ok)}
+.pet-bar b.low{background:var(--bad)}
+.pet-acts{flex-wrap:wrap}
+.wheel-box{position:relative; width:min(300px,78vw); aspect-ratio:1}
+.wheel{width:100%; height:100%; border-radius:50%; border:6px solid var(--surface2); box-shadow:0 0 0 3px var(--accent), 0 10px 30px rgba(0,0,0,.4); position:relative; transition:transform 4s cubic-bezier(.17,.67,.2,1)}
+.wheel .wl{position:absolute; left:50%; top:50%; width:30%; text-align:center; font-size:.72rem; font-weight:800; color:#1A1033; transform-origin:50% 50%; line-height:1.1}
+.wheel-pin{position:absolute; top:-14px; left:50%; transform:translateX(-50%); z-index:2; font-size:1.8rem; color:var(--accent); text-shadow:0 2px 4px rgba(0,0,0,.5)}
+.wheel-res{font-weight:800; min-height:1.4em; margin:0}

@@ -1713,6 +1713,8 @@ function start() {
     photo: { w: 90, h: 110, label: "🖼 Фоторамка" }, tv: { w: 230, h: 150, label: "📺 Телевізор" },
     rug: { w: 330, h: 100, label: "🟫 Килим з малюнком" }, sticker: { w: 150, h: 150, label: "✨ Наліпка" }
   };
+  let hRoom = 0;
+  const R = () => hData.rooms[Math.min(hRoom, hData.rooms.length - 1)];
   let hView = null, hData = null, hEdit = false, hSel = null, hUnsub = null, hCat = "Меблі", hSaveT = null, hSaving = false, hDirty = false, hList = [];
   const hImgCache = new Map();
   const hMine = () => !!me && hView === me.uid;
@@ -1736,14 +1738,14 @@ function start() {
   function hDefault() {
     const first = (profile.name || "").split(" ").pop() || "мій";
     return {
-      name: `Дім ${first}`.slice(0, 40), wall: { k: "p", v: "lilac" }, floor: { k: "p", v: "parquet" },
-      items: [
+      name: `Дім ${first}`.slice(0, 40), inv: { items: [], walls: [], treats: 0 }, wheel: "",
+      rooms: [{ id: "r0", ic: "🛋", name: "Вітальня", wall: { k: "p", v: "lilac" }, floor: { k: "p", v: "parquet" }, items: [
         { id: hid(), t: "e", e: "🪟", w: 160, x: 260, y: 190, s: 1, f: false },
         { id: hid(), t: "painting", w: 200, h: 150, x: 640, y: 180, s: 1, f: false },
         { id: hid(), t: "e", e: "🛋", w: 180, x: 520, y: 470, s: 1, f: false },
         { id: hid(), t: "e", e: "🪴", w: 120, x: 860, y: 450, s: 1, f: false },
         { id: hid(), t: "e", e: "💡", w: 80, x: 140, y: 440, s: 1, f: false }
-      ]
+      ] }]
     };
   }
   // ---- Картинки: свої (у базі) або за посиланням ----
@@ -1759,7 +1761,7 @@ function start() {
     return hImgCache.get(key);
   }
   async function hSurfaceCss(owner, sf, presets) {
-    if (!sf || sf.k === "p") return (presets[sf && sf.v] || Object.values(presets)[0])[1];
+    if (!sf || sf.k === "p") return (presets[sf && sf.v] || (presets === H_WALLS && RARE_WALLS[sf && sf.v]) || Object.values(presets)[0])[1];
     const src = await hImgSrc(owner, sf).catch(() => null);
     if (!src || /["\\\n]/.test(src)) return Object.values(presets)[0][1];
     return sf.rep ? `url("${src}") 0 0 / 22% auto repeat` : `url("${src}") center / cover no-repeat`;
@@ -1840,7 +1842,7 @@ function start() {
   }
   function openHouse(uid) {
     hFlush();
-    hUnsub && hUnsub(); hView = uid; hData = null; hSel = null; hEdit = false;
+    hUnsub && hUnsub(); hView = uid; hData = null; hSel = null; hEdit = false; hRoom = 0;
     $("#h-list").hidden = true; $("#h-room-wrap").hidden = false;
     $$("#h-nav .chip").forEach(c => c.setAttribute("aria-pressed", String(c.dataset.v === (hMine() ? "mine" : "all"))));
     renderHouse();
@@ -1849,7 +1851,7 @@ function start() {
       if (!s.exists()) {
         if (uid === me.uid && !viewAs) {
           const d = hDefault();
-          try { await setDoc(doc(db, "houses", uid), { ...d, likes: {}, at: serverTimestamp() }); } catch (e) { console.error(e); hData = { ...d, likes: {} }; renderHouse(); }
+          try { await setDoc(doc(db, "houses", uid), { ...hPayload(d), likes: {}, at: serverTimestamp() }); } catch (e) { console.error(e); hData = { ...d, likes: {} }; renderHouse(); }
           return;
         }
         hData = null; renderHouse(); return;
@@ -1858,7 +1860,7 @@ function start() {
       // Свій дім редагуємо локально: зі знімка беремо лише лайки, щоб не збити перетягування.
       if (hMine() && hData && !first) { hData.likes = v.likes || {}; renderHouseBar(); return; }
       first = false;
-      hData = { name: String(v.name || "Дім").slice(0, 40), wall: v.wall, floor: v.floor, items: hSanitize(v.items), likes: v.likes || {} };
+      hData = hFromDoc(v);
       renderHouse();
     }, e => { console.error(e); hData = null; renderHouse(); });
   }
@@ -1874,23 +1876,24 @@ function start() {
     $("#h-report").hidden = mine || !hData;
     $("#h-reset").hidden = mine || !hData || !(isAdmin || isMod);
     $("#h-status").hidden = !mine;
+    $("#h-wheel").hidden = !mine || !hData || !!viewAs;
   }
   async function renderHouse() {
-    renderHouseBar();
+    renderHouseBar(); renderRooms(); renderPet();
     const room = $("#house"), owner = hView;
     room.classList.toggle("editing", hEdit);
     $("#h-empty").hidden = !!hData;
     $("#h-edit").hidden = !hEdit; $("#h-tools").hidden = !(hEdit && hSel);
-    if (!hData) { $("#h-items").replaceChildren(); $("#h-wall").style.background = H_WALLS.white[1]; $("#h-floor").style.background = H_FLOORS.parquet[1]; return; }
+    if (!hData) { $("#h-items").replaceChildren(); $("#h-pet-walk").hidden = true; $("#h-wall").style.background = H_WALLS.white[1]; $("#h-floor").style.background = H_FLOORS.parquet[1]; return; }
     renderHouseItems();
     if (hEdit) renderHouseEditor();
-    const [w, f] = await Promise.all([hSurfaceCss(owner, hData.wall, H_WALLS), hSurfaceCss(owner, hData.floor, H_FLOORS)]);
+    const [w, f] = await Promise.all([hSurfaceCss(owner, R().wall, H_WALLS), hSurfaceCss(owner, R().floor, H_FLOORS)]);
     if (owner !== hView) return;
     $("#h-wall").style.background = w; $("#h-floor").style.background = f;
   }
   function renderHouseItems() {
     const box = $("#h-items"), owner = hView;
-    box.replaceChildren(...hData.items.map(it => {
+    box.replaceChildren(...R().items.map(it => {
       const d = el("div", "hi" + (it.f ? " flip" : "") + (it.id === hSel ? " sel" : "")); d.dataset.id = it.id;
       d.style.left = `calc(${it.x} * var(--u))`; d.style.top = `calc(${it.y} * var(--u))`;
       if (it.t === "e") { d.classList.add("hi-e"); d.textContent = it.e; d.style.fontSize = `calc(${it.w * it.s} * var(--u))`; }
@@ -1910,6 +1913,8 @@ function start() {
   }
   function renderHouseEditor() {
     $("#h-name").value = hData.name;
+    $("#h-room-name").value = R().name;
+    $("#h-room-del").hidden = hRoom === 0;
     const sw = (box, presets, cur, set, max) => {
       box.replaceChildren(...Object.entries(presets).map(([k, [name, css]]) => {
         const b = el("button", null, ""); b.type = "button"; b.title = name; b.setAttribute("aria-label", name);
@@ -1926,18 +1931,22 @@ function start() {
         box.append(rep);
       }
     };
-    sw($("#h-walls"), H_WALLS, hData.wall, v => { hData.wall = v; hChanged(true); }, 720);
-    sw($("#h-floors"), H_FLOORS, hData.floor, v => { hData.floor = v; hChanged(true); }, 640);
-    $("#h-cats").replaceChildren(...[...Object.keys(H_CATS), "Картинки"].map(c => { const b = el("button", "chip", c === "Картинки" ? "🖼 Картинки й написи" : c); b.type = "button"; b.setAttribute("aria-pressed", String(c === hCat)); b.addEventListener("click", () => { hCat = c; renderHouseEditor(); }); return b; }));
+    sw($("#h-walls"), { ...H_WALLS, ...Object.fromEntries((hData.inv.walls || []).filter(k => RARE_WALLS[k]).map(k => [k, ["⭐ " + RARE_WALLS[k][0], RARE_WALLS[k][1]]])) }, R().wall, v => { R().wall = v; hChanged(true); }, 720);
+    sw($("#h-floors"), H_FLOORS, R().floor, v => { R().floor = v; hChanged(true); }, 640);
+    $("#h-cats").replaceChildren(...[...Object.keys(H_CATS), "Рідкісні", "Картинки"].map(c => { const b = el("button", "chip", c === "Картинки" ? "🖼 Картинки й написи" : c === "Рідкісні" ? `⭐ Рідкісні (${hData.inv.items.length}/${RARE_ITEMS.length})` : c); b.type = "button"; b.setAttribute("aria-pressed", String(c === hCat)); b.addEventListener("click", () => { hCat = c; renderHouseEditor(); }); return b; }));
     const cat = $("#h-catalog");
     if (hCat === "Картинки") {
       cat.replaceChildren(...Object.entries(H_IMG).map(([t, v]) => { const b = el("button", "wide", v.label); b.type = "button"; b.addEventListener("click", () => hAddImg(t)); return b; }),
         (() => { const b = el("button", "wide", "🪧 Табличка з написом"); b.type = "button"; b.addEventListener("click", hAddSign); return b; })());
+    } else if (hCat === "Рідкісні") {
+      const own = RARE_ITEMS.filter(([e]) => hData.inv.items.includes(e));
+      cat.replaceChildren(...own.map(([e, w]) => { const b = el("button", null, e); b.type = "button"; b.setAttribute("aria-label", "Додати " + e); b.addEventListener("click", () => hAdd({ id: hid(), t: "e", e, w, x: 500, y: w > 150 ? 400 : 330, s: 1, f: false })); return b; }),
+        ...RARE_ITEMS.filter(([e]) => !hData.inv.items.includes(e)).map(() => { const b = el("button", null, "🔒"); b.type = "button"; b.disabled = true; b.title = "Вигравай у колесі удачі"; return b; }));
     } else cat.replaceChildren(...H_CATS[hCat].map(([e, w]) => { const b = el("button", null, e); b.type = "button"; b.setAttribute("aria-label", "Додати " + e); b.addEventListener("click", () => hAdd({ id: hid(), t: "e", e, w, x: 500, y: w > 150 ? 420 : 330, s: 1, f: false })); return b; }));
   }
   function hAdd(it) {
-    if (hData.items.length >= 60) { toast("У домі вже 60 предметів — прибери щось"); return; }
-    hData.items.push(it); hSel = it.id; hChanged(true);
+    if (R().items.length >= 60) { toast("У домі вже 60 предметів — прибери щось"); return; }
+    R().items.push(it); hSel = it.id; hChanged(true);
   }
   async function hAddImg(t) {
     const v = await pickImage(t === "rug" || t === "tv" ? 560 : 480);
@@ -1957,7 +1966,7 @@ function start() {
   }
   function hTools() {
     $("#h-tools").hidden = !(hEdit && hSel);
-    const sel = hData && hData.items.find(i => i.id === hSel);
+    const sel = hData && R().items.find(i => i.id === hSel);
     $$("#h-tools [data-a=image]").forEach(b => b.hidden = !(sel && H_IMG[sel.t]));
     $$("#h-tools [data-a=text]").forEach(b => b.hidden = !(sel && sel.t === "txt"));
   }
@@ -1967,7 +1976,7 @@ function start() {
     if (hSaving) { hSaveT = setTimeout(hSave, 500); return; }
     hSaving = true; hDirty = false;
     try {
-      await updateDoc(doc(db, "houses", me.uid), { name: (clean(hData.name).trim() || "Мій дім").slice(0, 40), wall: hData.wall, floor: hData.floor, items: hSanitize(hData.items), at: serverTimestamp() });
+      await updateDoc(doc(db, "houses", me.uid), { ...hPayload(hData), at: serverTimestamp() });
       $("#h-status").textContent = "Збережено ✓";
     } catch (e) { console.error(e); hDirty = true; $("#h-status").textContent = "Не вдалося зберегти"; }
     hSaving = false;
@@ -1982,7 +1991,7 @@ function start() {
     if (!hEdit || !hMine()) return;
     const node = e.target.closest(".hi");
     if (!node) { if (hSel) { hSel = null; renderHouseItems(); hTools(); } return; }
-    const it = hData.items.find(i => i.id === node.dataset.id); if (!it) return;
+    const it = R().items.find(i => i.id === node.dataset.id); if (!it) return;
     e.preventDefault();
     if (hSel !== it.id) { hSel = it.id; $$("#h-items .hi.sel").forEach(x => x.classList.remove("sel")); node.classList.add("sel"); hTools(); }
     const u = $("#house").clientWidth / H_W;
@@ -2004,29 +2013,29 @@ function start() {
   $("#h-items").addEventListener("click", async e => {
     // У режимі прикрашання клік по порожній картині відкриває вибір картинки.
     if (!hEdit || !hMine() || hJustDragged) return;
-    const node = e.target.closest(".hi"), it = node && hData.items.find(i => i.id === node.dataset.id);
+    const node = e.target.closest(".hi"), it = node && R().items.find(i => i.id === node.dataset.id);
     if (it && H_IMG[it.t] && !it.img) { const v = await pickImage(); if (v) { it.img = v; hChanged(false); } }
   });
   $("#h-tools").addEventListener("click", async e => {
     const a = e.target.closest("button") && e.target.closest("button").dataset.a; if (!a || !hData) return;
-    const i = hData.items.findIndex(x => x.id === hSel); if (i < 0) return;
-    const it = hData.items[i];
+    const i = R().items.findIndex(x => x.id === hSel); if (i < 0) return;
+    const it = R().items[i];
     if (a === "bigger") it.s = Math.min(4, Math.round((it.s + .15) * 100) / 100);
     if (a === "smaller") it.s = Math.max(.3, Math.round((it.s - .15) * 100) / 100);
     if (a === "flip") it.f = !it.f;
-    if (a === "front") { hData.items.splice(i, 1); hData.items.push(it); }
-    if (a === "back") { hData.items.splice(i, 1); hData.items.unshift(it); }
-    if (a === "delete") { hData.items.splice(i, 1); hSel = null; }
+    if (a === "front") { R().items.splice(i, 1); R().items.push(it); }
+    if (a === "back") { R().items.splice(i, 1); R().items.unshift(it); }
+    if (a === "delete") { R().items.splice(i, 1); hSel = null; }
     if (a === "image") { const v = await pickImage(it.t === "rug" || it.t === "tv" ? 560 : 480); if (!v) return; it.img = v; }
     if (a === "text") { const tx = clean((prompt("Новий напис (до 30 символів):", it.tx) || "").trim()).slice(0, 30); if (!tx) return; it.tx = tx; }
     hChanged(false);
   });
   document.addEventListener("keydown", e => {
     if (!hEdit || !hSel || $("#p-house").hidden || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName) || $("#img-pick").open) return;
-    const it = hData && hData.items.find(x => x.id === hSel); if (!it) return;
+    const it = hData && R().items.find(x => x.id === hSel); if (!it) return;
     const step = e.shiftKey ? 30 : 8, mv = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
     if (mv) { e.preventDefault(); it.x = clampN(it.x + mv[0], 0, H_W, it.x); it.y = clampN(it.y + mv[1], 0, H_H, it.y); hChanged(false); }
-    if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); hData.items = hData.items.filter(x => x.id !== hSel); hSel = null; hChanged(false); }
+    if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); R().items = R().items.filter(x => x.id !== hSel); hSel = null; hChanged(false); }
   });
   // ---- У гості ----
   $("#h-nav").addEventListener("click", e => {
@@ -2081,6 +2090,204 @@ function start() {
     b.dataset.armed = ""; b.textContent = "🧹 Скинути дім";
     try { await resetHouse(uid); logAction("Скинув дім", uid, dir[uid] ? dir[uid].name : ""); toast("Дім скинуто"); showHouseList(); }
     catch (ex) { console.error(ex); toast("Не вдалося"); }
+  });
+
+  /* ---- Кілька кімнат, вихованець, колесо удачі ---- */
+  const RARE_ITEMS = [["🏰", 240], ["🗽", 200], ["🎠", 170], ["🎡", 220], ["⛩", 200], ["🗼", 230], ["⛲", 170], ["🌋", 200], ["🏝", 200], ["🧞", 130], ["🧜‍♀️", 130], ["🦚", 120], ["🦩", 120], ["🪼", 90], ["🦕", 180], ["🎪", 200], ["💰", 90], ["🪄", 80], ["🧚", 110], ["🦸", 130]];
+  const RARE_WALLS = {
+    gold: ["Золоті", "repeating-linear-gradient(45deg,#E8B923 0 20px,#F5D061 20px 40px)"],
+    galaxy: ["Галактика", "radial-gradient(circle at 30% 40%,#ff2bd655,transparent 40%), radial-gradient(circle at 70% 60%,#00f0ff55,transparent 40%), radial-gradient(circle at 20% 30%,#fff 1px,transparent 2px) 0 0/50px 50px, #0A0420"],
+    rainbow: ["Веселка", "linear-gradient(90deg,#ff5e5e,#ffb35e,#fff35e,#5eff8a,#5ec8ff,#a35eff)"],
+    ocean: ["Акваріум", "radial-gradient(circle at 20% 80%,#ffffff66 4px,transparent 5px) 0 0/70px 90px, linear-gradient(#2EC4F0,#0A4F8A)"],
+    candy: ["Цукерка", "repeating-linear-gradient(-45deg,#FF8FC7 0 16px,#fff 16px 32px)"]
+  };
+  const ROOM_TYPES = {
+    bed: ["🛏", "Спальня", "pink", "carpet", [["🛏", 200, 500, 460], ["🪟", 160, 250, 190], ["🧸", 90, 820, 500]]],
+    kitchen: ["🍳", "Кухня", "white", "tiles", [["🍽", 80, 500, 460], ["🫖", 80, 380, 440], ["🪟", 160, 700, 190]]],
+    play: ["🎮", "Ігрова", "gamer", "neon", [["📺", 150, 500, 220], ["🎮", 70, 500, 480], ["🕹", 80, 760, 470]]],
+    bath: ["🛁", "Ванна", "mint", "tiles", [["🛁", 180, 500, 460], ["🪞", 140, 500, 190]]],
+    garden: ["🌳", "Сад", "sky", "grass", [["🌳", 230, 200, 360], ["🌻", 110, 700, 480], ["🌷", 80, 820, 500]]],
+    attic: ["📦", "Горище", "wood", "dark", [["📦", 90, 300, 480], ["🕸", 100, 870, 90], ["🧳", 90, 620, 490]]]
+  };
+  const PETS = {
+    c: [["🐱", "Котик"], ["🐶", "Песик"], ["🐰", "Зайчик"], ["🐹", "Хом'ячок"], ["🐥", "Курчатко"]],
+    r: [["🦊", "Лисичка"], ["🐼", "Панда"], ["🦉", "Сова"], ["🐧", "Пінгвін"]],
+    l: [["🦄", "Єдиноріг"], ["🐲", "Дракончик"], ["🦖", "Динозаврик"]]
+  };
+  const RARITY = { c: "звичайний", r: "рідкісний ✨", l: "легендарний 🌟" };
+  const surf = (sf, def) => sf && typeof sf === "object" && ["p", "up", "url"].includes(sf.k) && typeof sf.v === "string" && (sf.k !== "url" || URL_OK.test(sf.v)) ? { k: sf.k, v: sf.v.slice(0, 500), ...(sf.rep ? { rep: true } : {}) } : def;
+  function hFromDoc(v) {
+    const rooms = Array.isArray(v.rooms) && v.rooms.length ? v.rooms : [{ id: "r0", ic: "🛋", name: "Вітальня", wall: v.wall, floor: v.floor, items: v.items }];
+    const inv = v.inv && typeof v.inv === "object" ? v.inv : {};
+    return {
+      name: String(v.name || "Дім").slice(0, 40), likes: v.likes || {}, wheel: String(v.wheel || ""),
+      inv: { items: (Array.isArray(inv.items) ? inv.items : []).filter(e => RARE_ITEMS.some(([x]) => x === e)), walls: (Array.isArray(inv.walls) ? inv.walls : []).filter(k => RARE_WALLS[k]), treats: clampN(inv.treats, 0, 999, 0) },
+      pet: hPet(v.pet),
+      rooms: rooms.slice(0, 6).map((r, i) => ({ id: String(r.id || "r" + i).slice(0, 12), ic: String(r.ic || "🚪").slice(0, 8), name: clean(String(r.name || "Кімната")).slice(0, 20), wall: surf(r.wall, { k: "p", v: "lilac" }), floor: surf(r.floor, { k: "p", v: "parquet" }), items: hSanitize(r.items) }))
+    };
+  }
+  function hPet(p) {
+    if (!p || typeof p !== "object" || !PETS[p.r]) return null;
+    const kind = PETS[p.r].find(([e]) => e === p.e); if (!kind) return null;
+    const n = x => clampN(x, 0, 9e15, 0);
+    return { e: p.e, r: p.r, name: clean(String(p.name || kind[1])).slice(0, 20), xp: clampN(p.xp, 0, 99999, 0), born: n(p.born), fed: n(p.fed), played: n(p.played), washed: n(p.washed), warm: n(p.warm) };
+  }
+  function hPayload(d) {
+    const rooms = d.rooms.map(r => ({ id: r.id, ic: r.ic, name: (clean(r.name).trim() || "Кімната").slice(0, 20), wall: r.wall, floor: r.floor, items: hSanitize(r.items) }));
+    return {
+      name: (clean(d.name).trim() || "Мій дім").slice(0, 40), wall: rooms[0].wall, floor: rooms[0].floor, items: rooms[0].items, rooms,
+      inv: { items: d.inv.items.slice(0, 50), walls: d.inv.walls.slice(0, 20), treats: Math.min(999, d.inv.treats | 0) }, wheel: d.wheel || "",
+      ...(d.pet ? { pet: d.pet } : {})
+    };
+  }
+  // ---- Кімнати ----
+  function renderRooms() {
+    const box = $("#h-rooms"); if (!hData) { box.replaceChildren(); return; }
+    const chips = hData.rooms.map((r, i) => { const b = el("button", "chip", `${r.ic} ${r.name}`); b.type = "button"; b.setAttribute("aria-pressed", String(i === hRoom)); b.addEventListener("click", () => { hRoom = i; hSel = null; renderHouse(); }); return b; });
+    if (hMine() && hEdit && hData.rooms.length < 6) { const add = el("button", "chip add", "＋ Кімната"); add.type = "button"; add.addEventListener("click", () => { $("#h-addroom").hidden = !$("#h-addroom").hidden; }); chips.push(add); }
+    box.replaceChildren(...chips);
+    $("#h-addroom").replaceChildren(...Object.entries(ROOM_TYPES).map(([k, [ic, name]]) => { const b = el("button", "btn ghost sm", `${ic} ${name}`); b.type = "button"; b.addEventListener("click", () => addRoom(k)); return b; }));
+    if (!(hMine() && hEdit)) $("#h-addroom").hidden = true;
+  }
+  function addRoom(k) {
+    const [ic, name, wall, floor, items] = ROOM_TYPES[k];
+    hData.rooms.push({ id: "r" + hid(), ic, name, wall: { k: "p", v: wall }, floor: { k: "p", v: floor }, items: items.map(([e, w, x, y]) => ({ id: hid(), t: "e", e, w, x, y, s: 1, f: false })) });
+    hRoom = hData.rooms.length - 1; hSel = null; $("#h-addroom").hidden = true;
+    hChanged(true); toast(`${ic} ${name} додано!`);
+  }
+  $("#h-room-name").addEventListener("input", e => { if (!hData) return; R().name = e.target.value.slice(0, 20); renderRooms(); hChanged(false); });
+  $("#h-room-del").addEventListener("click", e => {
+    const b = e.currentTarget; if (!hData || hRoom === 0) return;
+    if (b.dataset.armed !== "1") { b.dataset.armed = "1"; b.textContent = "Точно видалити?"; setTimeout(() => { b.dataset.armed = ""; b.textContent = "🗑 Видалити кімнату"; }, 3000); return; }
+    b.dataset.armed = ""; b.textContent = "🗑 Видалити кімнату";
+    hData.rooms.splice(hRoom, 1); hRoom = 0; hSel = null; hChanged(true);
+  });
+
+  // ---- Вихованець ----
+  const H = 3600000, MIN = 60000;
+  const petStage = p => p.xp < 3 ? ["яйце", 0] : p.xp < 20 ? ["малюк", 1] : p.xp < 60 ? ["підліток", 2] : p.xp < 150 ? ["дорослий", 3] : ["легенда", 4];
+  const petBar = (since, perHour) => Math.max(0, Math.round(100 - (Date.now() - since) / H * perHour));
+  const ACTIONS = {
+    warm: { label: "🔥 Гріти яйце", cd: MIN, xp: 1, field: "warm" },
+    feed: { label: "🍖 Нагодувати", cd: H, xp: 2, field: "fed" },
+    play: { label: "🎾 Погратися", cd: 30 * MIN, xp: 1, field: "played" },
+    wash: { label: "🛁 Помити", cd: 3 * H, xp: 1, field: "washed" }
+  };
+  function renderPet() {
+    const box = $("#h-pet"), walk = $("#h-pet-walk");
+    if (!hData) { box.hidden = true; walk.hidden = true; return; }
+    const p = hData.pet, mine = hMine();
+    box.hidden = !p && !mine;
+    if (!p) {
+      walk.hidden = true;
+      box.replaceChildren(el("h3", null, "🐾 Вихованець"), el("p", "small", "Візьми яйце — з нього вилупиться вихованець. Можна отримати рідкісного чи навіть легендарного!"));
+      if (mine && !viewAs) { const b = el("button", "btn", "🥚 Отримати яйце"); b.type = "button"; b.addEventListener("click", adoptPet); box.append(b); }
+      return;
+    }
+    const [stage, lvl] = petStage(p), egg = lvl === 0;
+    const hunger = egg ? 100 : petBar(p.fed, 6), happy = egg ? 100 : petBar(p.played, 8), clean_ = egg ? 100 : petBar(p.washed, 4);
+    const mood = egg ? "🥚" : hunger < 30 ? "🍖?" : clean_ < 30 ? "🫧?" : happy < 30 ? "🎾?" : "❤️";
+    walk.hidden = false;
+    walk.textContent = egg ? "🥚" : p.e;
+    walk.style.fontSize = `calc(${[70, 70, 95, 120, 140][lvl]} * var(--u))`;
+    walk.dataset.mood = mood; walk.classList.toggle("egg", egg); walk.classList.toggle("legend", p.r === "l" && !egg);
+    const head = el("div", "pet-head");
+    const ava = el("div", "pet-ava" + (p.r === "l" && !egg ? " legend" : ""), egg ? "🥚" : p.e);
+    const info = el("div");
+    info.append(el("b", null, egg ? "Яйце вихованця" : `${p.name}`), el("span", "muted small", egg ? `Грій яйце: ${p.xp} з 3 — і хтось вилупиться!` : `${stage} · ${RARITY[p.r]} · досвід ${p.xp}`));
+    head.append(ava, info);
+    if (mine && !egg && !viewAs) { const rn = el("button", "btn ghost sm", "✏️"); rn.type = "button"; rn.title = "Перейменувати"; rn.addEventListener("click", () => { const n = clean((prompt("Як звати вихованця?", p.name) || "").trim()).slice(0, 20); if (n) { p.name = n; hChanged(false); renderPet(); } }); head.append(rn); }
+    const parts = [el("h3", null, "🐾 Вихованець"), head];
+    if (!egg) {
+      const bars = el("div", "pet-bars");
+      [["🍖 Ситість", hunger], ["🎾 Радість", happy], ["🫧 Чистота", clean_]].forEach(([t, v]) => { const r = el("div", "pet-bar"), i = el("i"), f = el("b"); f.style.width = v + "%"; f.className = v < 30 ? "low" : ""; i.append(f); r.append(el("span", null, t), i, el("small", null, v + "%")); bars.append(r); });
+      parts.push(bars);
+      const next = [20, 60, 150][lvl - 1];
+      if (next) parts.push(el("p", "muted small", `До рівня «${["підліток", "дорослий", "легенда"][lvl - 1]}»: ще ${next - p.xp} досвіду`));
+    }
+    if (mine && !viewAs) {
+      const acts = el("div", "row pet-acts");
+      (egg ? ["warm"] : ["feed", "play", "wash"]).forEach(k => {
+        const a = ACTIONS[k], left = p[a.field] + a.cd - Date.now();
+        const b = el("button", "btn sm" + (left > 0 ? " ghost" : ""), left > 0 ? `${a.label} · ${Math.ceil(left / MIN)} хв` : a.label); b.type = "button"; b.disabled = left > 0;
+        b.addEventListener("click", () => petAct(k)); acts.append(b);
+      });
+      if (!egg) { const t = el("button", "btn sm ghost", `🍬 Ласощі (${hData.inv.treats})`); t.type = "button"; t.disabled = !hData.inv.treats; t.title = "+5 досвіду. Ласощі виграєш у колесі удачі"; t.addEventListener("click", () => petAct("treat")); acts.append(t); }
+      parts.push(acts);
+    }
+    box.replaceChildren(...parts);
+  }
+  function adoptPet() {
+    const roll = Math.random(), r = roll < .05 ? "l" : roll < .3 ? "r" : "c", list = PETS[r], [e, name] = list[Math.floor(Math.random() * list.length)];
+    hData.pet = { e, r, name, xp: 0, born: Date.now(), fed: 0, played: 0, washed: 0, warm: 0 };
+    hChanged(false); renderPet(); toast("🥚 У тебе яйце! Грій його, щоб вилупився вихованець");
+  }
+  function petAct(k) {
+    const p = hData.pet; if (!p || !hMine()) return;
+    const was = petStage(p)[1];
+    if (k === "treat") { if (!hData.inv.treats) return; hData.inv.treats--; p.xp += 5; p.fed = Date.now(); toast(`${p.e} Ням! +5 досвіду`); }
+    else {
+      const a = ACTIONS[k];
+      if (Date.now() - p[a.field] < a.cd) return;
+      p[a.field] = Date.now(); p.xp += a.xp;
+      if (k === "warm" && p.xp >= 3) { p.fed = p.played = p.washed = Date.now(); }
+    }
+    const now = petStage(p)[1];
+    if (was === 0 && now > 0) toast(`🐣 Вилупився ${p.name}! Це ${RARITY[p.r]} ${p.e}`);
+    else if (now > was) toast(`🎉 ${p.name} виріс: тепер ${petStage(p)[0]}!`);
+    hChanged(false); renderPet();
+  }
+  setInterval(() => { if (hData && !$("#p-house").hidden) renderPet(); }, 60000);
+
+  // ---- Колесо удачі (раз на день) ----
+  const WHEEL = [
+    { t: "🍬 1 ласощі", c: "#FFB3D9", go: d => { d.inv.treats += 1; return "🍬 1 ласощі для вихованця"; } },
+    { t: "🎁 Рідкісна річ", c: "#9C8CFF", go: d => rareItem(d) },
+    { t: "🍬×3", c: "#FFD95E", go: d => { d.inv.treats += 3; return "🍬 3 ласощі для вихованця"; } },
+    { t: "🌌 Обої", c: "#4FD3EA", go: d => rareWall(d) },
+    { t: "🍬 1 ласощі", c: "#FFB3D9", go: d => { d.inv.treats += 1; return "🍬 1 ласощі для вихованця"; } },
+    { t: "🎁 Рідкісна річ", c: "#9C8CFF", go: d => rareItem(d) },
+    { t: "⭐ +10 досвіду", c: "#4FD08F", go: d => { if (d.pet && petStage(d.pet)[1] > 0) { d.pet.xp += 10; return `⭐ +10 досвіду для ${d.pet.name}`; } d.inv.treats += 2; return "🍬 2 ласощі (для майбутнього вихованця)"; } },
+    { t: "💎 СУПЕРПРИЗ", c: "#FF7A82", go: d => `💎 СУПЕРПРИЗ! ${rareItem(d)} і ${rareItem(d)}` }
+  ];
+  function rareItem(d) {
+    const left = RARE_ITEMS.filter(([e]) => !d.inv.items.includes(e));
+    if (!left.length) { d.inv.treats += 3; return "🍬 3 ласощі (усі рідкісні речі вже твої!)"; }
+    const [e] = left[Math.floor(Math.random() * left.length)]; d.inv.items.push(e);
+    return `${e} — рідкісна річ (шукай у «⭐ Рідкісні»)`;
+  }
+  function rareWall(d) {
+    const left = Object.keys(RARE_WALLS).filter(k => !d.inv.walls.includes(k));
+    if (!left.length) { d.inv.treats += 2; return "🍬 2 ласощі (усі рідкісні обої вже твої!)"; }
+    const k = left[Math.floor(Math.random() * left.length)]; d.inv.walls.push(k);
+    return `🌌 Рідкісні обої «${RARE_WALLS[k][0]}» (є в «Прикрашати»)`;
+  }
+  const todayKey = () => isoDay(new Date());
+  function renderWheel() {
+    const w = $("#wheel"), n = WHEEL.length, seg = 360 / n;
+    w.style.background = `conic-gradient(${WHEEL.map((s, i) => `${s.c} ${i * seg}deg ${(i + 1) * seg}deg`).join(",")})`;
+    const rad = (w.clientWidth || 280) * .3;
+    w.replaceChildren(...WHEEL.map((s, i) => { const l = el("span", "wl", s.t); l.style.transform = `translate(-50%,-50%) rotate(${i * seg + seg / 2}deg) translateY(-${rad}px)`; return l; }));
+    const done = hData && hData.wheel === todayKey();
+    $("#wheel-go").disabled = done || !hData;
+    $("#wheel-go").textContent = done ? "Наступне обертання завтра 🌙" : "🎡 Крутити!";
+  }
+  let wheelRot = 0;
+  $("#h-wheel").addEventListener("click", () => { $("#wheel-res").textContent = ""; $("#wheel-dlg").showModal(); renderWheel(); });
+  $("#wheel-x").addEventListener("click", () => $("#wheel-dlg").close());
+  $("#wheel-go").addEventListener("click", () => {
+    if (!hData || hData.wheel === todayKey() || !hMine()) return;
+    const n = WHEEL.length, seg = 360 / n, idx = Math.floor(Math.random() * n);
+    hData.wheel = todayKey();
+    $("#wheel-go").disabled = true; $("#wheel-go").textContent = "Крутиться…";
+    wheelRot += 360 * 5 + (360 - (wheelRot % 360)) + (360 - (idx * seg + seg / 2));
+    const w = $("#wheel"); w.style.transform = `rotate(${wheelRot}deg)`;
+    setTimeout(() => {
+      const res = WHEEL[idx].go(hData);
+      $("#wheel-res").textContent = "Твій приз: " + res;
+      hChanged(false); renderPet(); renderWheel();
+      if (hEdit) renderHouseEditor();
+    }, 4200);
   });
 
   /* ===== Учні: порівняння списку класу з тими, хто на порталі ===== */

@@ -518,17 +518,29 @@ service cloud.firestore {
         && (m.k != 'url' || m.v.matches('https://[-A-Za-z0-9._~:/?#@!$&*+,;=%]+'))
         && (!('rep' in m) || m.rep is bool);
     }
+    // Кімнати (до 6), вихованець, рідкісні речі й колесо удачі.
+    function houseExtra(d) {
+      return (!('rooms' in d) || (d.rooms is list && d.rooms.size() <= 6))
+        && (!('pet' in d) || (d.pet is map && d.pet.keys().hasOnly(['e', 'r', 'name', 'xp', 'born', 'fed', 'played', 'washed', 'warm'])
+                              && d.pet.r in ['c', 'r', 'l'] && shortText(d.pet.name, 0, 20) && d.pet.xp is int))
+        && (!('inv' in d) || (d.inv is map && d.inv.keys().hasOnly(['items', 'walls', 'treats'])
+                              && d.inv.items is list && d.inv.items.size() <= 50
+                              && d.inv.walls is list && d.inv.walls.size() <= 20 && d.inv.treats is int))
+        && (!('wheel' in d) || shortText(d.wheel, 0, 10));
+    }
     match /houses/{uid} {
       allow read: if approved() || isAdmin();
       allow create: if (approved() || isAdmin()) && request.auth.uid == uid
-        && request.resource.data.keys().hasOnly(['name', 'wall', 'floor', 'items', 'likes', 'at'])
+        && request.resource.data.keys().hasOnly(['name', 'wall', 'floor', 'items', 'rooms', 'pet', 'inv', 'wheel', 'likes', 'at'])
+        && houseExtra(request.resource.data)
         && shortText(request.resource.data.name, 1, 40)
         && houseSurface(request.resource.data.wall) && houseSurface(request.resource.data.floor)
         && request.resource.data.items is list && request.resource.data.items.size() <= 60
         && request.resource.data.likes == {}
         && request.resource.data.at == request.time;
       allow update: if (approved() || isAdmin()) && request.auth.uid == uid
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'wall', 'floor', 'items', 'at'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'wall', 'floor', 'items', 'rooms', 'pet', 'inv', 'wheel', 'at'])
+        && houseExtra(request.resource.data)
         && shortText(request.resource.data.name, 1, 40)
         && houseSurface(request.resource.data.wall) && houseSurface(request.resource.data.floor)
         && request.resource.data.items is list && request.resource.data.items.size() <= 60
